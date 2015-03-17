@@ -1,9 +1,23 @@
-﻿// Copyright (c) 2010 AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
+﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.Contracts;
 
 namespace ICSharpCode.NRefactory.TypeSystem
 {
@@ -25,9 +39,6 @@ namespace ICSharpCode.NRefactory.TypeSystem
 	/// and which are used only within a single type definition. Then a persistent file format could be organized so
 	/// that shared objects are loaded only once, yet non-shared objects get loaded lazily together with the class.
 	/// </remarks>
-	#if WITH_CONTRACTS
-	[ContractClass(typeof(IInterningProviderContract))]
-	#endif
 	public interface IInterningProvider
 	{
 		/// <summary>
@@ -40,22 +51,4 @@ namespace ICSharpCode.NRefactory.TypeSystem
 		
 		IList<T> InternList<T>(IList<T> list) where T : class;
 	}
-	
-	#if WITH_CONTRACTS
-	[ContractClassFor(typeof(IInterningProvider))]
-	abstract class IInterningProviderContract : IInterningProvider
-	{
-		T IInterningProvider.Intern<T>(T obj)
-		{
-			Contract.Ensures((Contract.Result<T>() == null) == (obj == null));
-			return obj;
-		}
-		
-		IList<T> IInterningProvider.InternList<T>(IList<T> list)
-		{
-			Contract.Ensures((Contract.Result<IList<T>>() == null) == (list == null));
-			return list;
-		}
-	}
-	#endif
 }

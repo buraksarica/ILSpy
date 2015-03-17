@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Windows.Media;
 using ICSharpCode.Decompiler;
 using Mono.Cecil;
 
@@ -47,20 +48,56 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			}
 		}
 		
-		public EventDefinition EventDefinition {
+		public EventDefinition EventDefinition
+		{
 			get { return ev; }
 		}
 		
-		public override object Text {
-			get { return HighlightSearchMatch(ev.Name, " : " + this.Language.TypeToString(ev.EventType, false, ev)); }
+		public override object Text
+		{
+			get { return GetText(ev, this.Language) + ev.MetadataToken.ToSuffixString(); }
+		}
+
+		public static object GetText(EventDefinition eventDef, Language language)
+		{
+			return HighlightSearchMatch(eventDef.Name, " : " + language.TypeToString(eventDef.EventType, false, eventDef));
 		}
 		
-		public override object Icon {
-			get {
-				return Images.Event;
+		public override object Icon
+		{
+			get { return GetIcon(ev); }
+		}
+
+		public static ImageSource GetIcon(EventDefinition eventDef)
+		{
+			MethodDefinition accessor = eventDef.AddMethod ?? eventDef.RemoveMethod;
+			if (accessor != null)
+				return Images.GetIcon(MemberIcon.Event, GetOverlayIcon(eventDef.AddMethod.Attributes), eventDef.AddMethod.IsStatic);
+			else
+				return Images.GetIcon(MemberIcon.Event, AccessOverlayIcon.Public, false);
+		}
+
+		private static AccessOverlayIcon GetOverlayIcon(MethodAttributes methodAttributes)
+		{
+			switch (methodAttributes & MethodAttributes.MemberAccessMask) {
+				case MethodAttributes.Public:
+					return AccessOverlayIcon.Public;
+				case MethodAttributes.Assembly:
+				case MethodAttributes.FamANDAssem:
+					return AccessOverlayIcon.Internal;
+				case MethodAttributes.Family:
+					return AccessOverlayIcon.Protected;
+				case MethodAttributes.FamORAssem:
+					return AccessOverlayIcon.ProtectedInternal;
+				case MethodAttributes.Private:
+					return AccessOverlayIcon.Private;
+				case MethodAttributes.CompilerControlled:
+					return AccessOverlayIcon.CompilerControlled;
+				default:
+					throw new NotSupportedException();
 			}
 		}
-		
+
 		public override FilterResult Filter(FilterSettings settings)
 		{
 			if (settings.SearchTermMatches(ev.Name) && settings.Language.ShowMember(ev))
@@ -74,7 +111,16 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			language.DecompileEvent(ev, output, options);
 		}
 		
-		MemberReference IMemberTreeNode.Member {
+		
+		public override bool IsPublicAPI {
+			get {
+				MethodDefinition accessor = ev.AddMethod ?? ev.RemoveMethod;
+				return accessor != null && (accessor.IsPublic || accessor.IsFamilyOrAssembly || accessor.IsFamily);
+			}
+		}
+		
+		MemberReference IMemberTreeNode.Member
+		{
 			get { return ev; }
 		}
 	}

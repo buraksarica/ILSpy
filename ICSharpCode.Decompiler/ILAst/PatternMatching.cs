@@ -1,5 +1,20 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
+﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
 using System.Collections.Generic;
@@ -139,6 +154,24 @@ namespace ICSharpCode.Decompiler.ILAst
 		{
 			ILVariable v;
 			return node.Match(ILCode.Ldloc, out v) && v == expectedVar;
+		}
+		
+		public static bool MatchLdloca(this ILNode node, ILVariable expectedVar)
+		{
+			ILVariable v;
+			return node.Match(ILCode.Ldloca, out v) && v == expectedVar;
+		}
+		
+		public static bool MatchStloc(this ILNode node, ILVariable expectedVar, out ILExpression expr)
+		{
+			ILVariable v;
+			return node.Match(ILCode.Stloc, out v, out expr) && v == expectedVar;
+		}
+		
+		public static bool MatchLdcI4(this ILNode node, int expectedValue)
+		{
+			int v;
+			return node.Match(ILCode.Ldc_I4, out v) && v == expectedValue;
 		}
 	}
 }

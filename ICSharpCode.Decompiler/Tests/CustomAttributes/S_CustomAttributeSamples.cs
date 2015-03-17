@@ -69,6 +69,19 @@ namespace AppliedToEvent
 		public event EventHandler MyEvent;
 	}
 }
+//$$ AppliedToEventMethods
+namespace AppliedToEventMethods
+{
+	[AttributeUsage(AttributeTargets.Method)]
+	public class MyAttributeAttribute : Attribute
+	{
+	}
+	public class TestClass
+	{
+		[method: MyAttribute]
+		public event EventHandler MyEvent;
+	}
+}
 //$$ AppliedToField
 namespace AppliedToField
 {
@@ -467,4 +480,14 @@ namespace ClassAttributeOnTypeParameter
 	public class MyClass<[MyAttribute] T>
 	{
 	}
+}
+//$$ AttributeOnReturnTypeOfDelegate
+namespace AttributeOnReturnTypeOfDelegate
+{
+	[AttributeUsage(AttributeTargets.All)]
+	public class MyAttributeAttribute : Attribute
+	{
+	}
+	[return: MyAttribute]
+	public delegate void Test();
 }

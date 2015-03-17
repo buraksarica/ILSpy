@@ -1,5 +1,20 @@
-// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
 using System.IO;
@@ -10,29 +25,31 @@ namespace ICSharpCode.NRefactory.CSharp
 	[TestFixture]
 	public class InsertParenthesesVisitorTests
 	{
-		CSharpFormattingPolicy policy;
+		CSharpFormattingOptions policy;
 		
 		[SetUp]
 		public void SetUp()
 		{
-			policy = new CSharpFormattingPolicy();
+			policy = FormattingOptionsFactory.CreateMono ();
 		}
 		
 		string InsertReadable(Expression expr)
 		{
 			expr = expr.Clone();
-			expr.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = true }, null);
+			expr.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = true });
 			StringWriter w = new StringWriter();
-			expr.AcceptVisitor(new OutputVisitor(w, policy), null);
+			w.NewLine = " ";
+			expr.AcceptVisitor(new CSharpOutputVisitor(new TextWriterOutputFormatter(w) { IndentationString = "" }, policy));
 			return w.ToString();
 		}
 		
 		string InsertRequired(Expression expr)
 		{
 			expr = expr.Clone();
-			expr.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = false }, null);
+			expr.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = false });
 			StringWriter w = new StringWriter();
-			expr.AcceptVisitor(new OutputVisitor(w, policy), null);
+			w.NewLine = " ";
+			expr.AcceptVisitor(new CSharpOutputVisitor(new TextWriterOutputFormatter(w) { IndentationString = "" }, policy));
 			return w.ToString();
 		}
 		
@@ -83,6 +100,33 @@ namespace ICSharpCode.NRefactory.CSharp
 			
 			Assert.AreEqual("(MyType)!a", InsertRequired(expr));
 			Assert.AreEqual("(MyType)(!a)", InsertReadable(expr));
+		}
+		
+		[Test]
+		public void TrickyCast4()
+		{
+			Expression expr = new PrimitiveExpression(int.MinValue).CastTo(new SimpleType("MyType"));
+			
+			Assert.AreEqual("(MyType)(-2147483648)", InsertRequired(expr));
+			Assert.AreEqual("(MyType)(-2147483648)", InsertReadable(expr));
+		}
+		
+		[Test]
+		public void TrickyCast5()
+		{
+			Expression expr = new PrimitiveExpression(-1.0).CastTo(new SimpleType("MyType"));
+			
+			Assert.AreEqual("(MyType)(-1.0)", InsertRequired(expr));
+			Assert.AreEqual("(MyType)(-1.0)", InsertReadable(expr));
+		}
+		
+		[Test]
+		public void TrickyCast6()
+		{
+			Expression expr = new PrimitiveExpression(int.MinValue).CastTo(new PrimitiveType("double"));
+			
+			Assert.AreEqual("(double)-2147483648", InsertRequired(expr));
+			Assert.AreEqual("(double)-2147483648", InsertReadable(expr));
 		}
 		
 		[Test]
@@ -170,8 +214,8 @@ namespace ICSharpCode.NRefactory.CSharp
 				}
 			}.Invoke("ToArray");
 			
-			Assert.AreEqual("(from a in b" + Environment.NewLine + "select a.c ()).ToArray ()", InsertRequired(expr));
-			Assert.AreEqual("(from a in b" + Environment.NewLine + "select a.c ()).ToArray ()", InsertReadable(expr));
+			Assert.AreEqual("( from a in b select a.c ()).ToArray ()", InsertRequired(expr));
+			Assert.AreEqual("( from a in b select a.c ()).ToArray ()", InsertReadable(expr));
 		}
 		
 		[Test]
@@ -194,12 +238,10 @@ namespace ICSharpCode.NRefactory.CSharp
 				query.Clone()
 			);
 			
-			Assert.AreEqual("(from a in b" + Environment.NewLine +
-			                "select a) + from a in b" + Environment.NewLine +
-			                "select a", InsertRequired(expr));
-			Assert.AreEqual("(from a in b" + Environment.NewLine +
-			                "select a) + (from a in b" + Environment.NewLine +
-			                "select a)", InsertReadable(expr));
+			Assert.AreEqual("( from a in b select a) + " +
+			                " from a in b select a", InsertRequired(expr));
+			Assert.AreEqual("( from a in b select a) + " +
+			                "( from a in b select a)", InsertReadable(expr));
 		}
 		
 		[Test]
@@ -217,10 +259,8 @@ namespace ICSharpCode.NRefactory.CSharp
 				}
 			}.IsType(new PrimitiveType("int"));
 			
-			Assert.AreEqual("(from a in b" + Environment.NewLine +
-			                "select a) is int", InsertRequired(expr));
-			Assert.AreEqual("(from a in b" + Environment.NewLine +
-			                "select a) is int", InsertReadable(expr));
+			Assert.AreEqual("( from a in b select a) is int", InsertRequired(expr));
+			Assert.AreEqual("( from a in b select a) is int", InsertReadable(expr));
 		}
 		
 		[Test]
@@ -319,6 +359,39 @@ namespace ICSharpCode.NRefactory.CSharp
 			
 			Assert.AreEqual("a && (b || c)", InsertRequired(expr));
 			Assert.AreEqual("a && (b || c)", InsertReadable(expr));
+		}
+		
+		[Test]
+		public void ArrayCreationInIndexer()
+		{
+			Expression expr = new IndexerExpression {
+				Target = new ArrayCreateExpression {
+					Type = new PrimitiveType("int"),
+					Arguments = { new PrimitiveExpression(1) }
+				},
+				Arguments = { new PrimitiveExpression(0) }
+			};
+			
+			Assert.AreEqual("(new int[1]) [0]", InsertRequired(expr));
+			Assert.AreEqual("(new int[1]) [0]", InsertReadable(expr));
+		}
+		
+		[Test]
+		public void ArrayCreationWithInitializerInIndexer()
+		{
+			Expression expr = new IndexerExpression {
+				Target = new ArrayCreateExpression {
+					Type = new PrimitiveType("int"),
+					Arguments = { new PrimitiveExpression(1) },
+					Initializer = new ArrayInitializerExpression {
+						Elements = { new PrimitiveExpression(42) }
+					}
+				},
+				Arguments = { new PrimitiveExpression(0) }
+			};
+			
+			Assert.AreEqual("new int[1] { 42 } [0]", InsertRequired(expr));
+			Assert.AreEqual("(new int[1] { 42 }) [0]", InsertReadable(expr));
 		}
 	}
 }

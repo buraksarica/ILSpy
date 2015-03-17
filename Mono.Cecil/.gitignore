@@ -5,3 +5,6 @@ obj
 *.pidb
 *.userprefs
 *.xml
+*.nupkg
+**/test-results/*
+*Resharper*

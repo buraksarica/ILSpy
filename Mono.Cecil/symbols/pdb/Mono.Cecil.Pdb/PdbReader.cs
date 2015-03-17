@@ -4,7 +4,7 @@
 // Author:
 //   Jb Evain (jbevain@gmail.com)
 //
-// Copyright (c) 2008 - 2010 Jb Evain
+// Copyright (c) 2008 - 2011 Jb Evain
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -90,12 +90,8 @@ namespace Mono.Cecil.Pdb {
 				Guid guid;
 				var funcs = PdbFile.LoadFunctions (pdb_file, true, out age, out guid);
 
-				if (this.age != 0) {
-					if (this.age != age)
-						return false;
-					if (this.guid != guid)
-						return false;
-				}
+				if (this.age != 0 && this.guid != guid)
+					return false;
 
 				foreach (PdbFunction function in funcs)
 					functions.Add (function.token, function);

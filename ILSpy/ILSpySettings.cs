@@ -18,7 +18,7 @@
 
 using System;
 using System.IO;
-using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Xml;
 using System.Xml.Linq;
@@ -42,7 +42,7 @@ namespace ICSharpCode.ILSpy
 			this.root = root;
 		}
 		
-		public XElement this[string section] {
+		public XElement this[XName section] {
 			get {
 				return root.Element(section) ?? new XElement(section);
 			}
@@ -58,7 +58,7 @@ namespace ICSharpCode.ILSpy
 		{
 			using (new MutexProtector(ConfigFileMutex)) {
 				try {
-					XDocument doc = XDocument.Load(GetConfigFile());
+					XDocument doc = LoadWithoutCheckingCharacters(GetConfigFile());
 					return new ILSpySettings(doc.Root);
 				} catch (IOException) {
 					return new ILSpySettings();
@@ -66,6 +66,11 @@ namespace ICSharpCode.ILSpy
 					return new ILSpySettings();
 				}
 			}
+		}
+		
+		static XDocument LoadWithoutCheckingCharacters(string fileName)
+		{
+			return XDocument.Load(fileName, LoadOptions.None);
 		}
 		
 		/// <summary>
@@ -94,7 +99,7 @@ namespace ICSharpCode.ILSpy
 				string config = GetConfigFile();
 				XDocument doc;
 				try {
-					doc = XDocument.Load(config);
+					doc = LoadWithoutCheckingCharacters(config);
 				} catch (IOException) {
 					// ensure the directory exists
 					Directory.CreateDirectory(Path.GetDirectoryName(config));
@@ -104,7 +109,7 @@ namespace ICSharpCode.ILSpy
 				}
 				doc.Root.SetAttributeValue("version", RevisionClass.Major + "." + RevisionClass.Minor + "." + RevisionClass.Build + "." + RevisionClass.Revision);
 				action(doc.Root);
-				doc.Save(config);
+				doc.Save(config, SaveOptions.None);
 			}
 		}
 		
@@ -120,7 +125,7 @@ namespace ICSharpCode.ILSpy
 		/// </summary>
 		sealed class MutexProtector : IDisposable
 		{
-			Mutex mutex;
+			readonly Mutex mutex;
 			
 			public MutexProtector(string name)
 			{

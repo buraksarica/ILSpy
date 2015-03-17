@@ -1,26 +1,63 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
+﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
 using NUnit.Framework;
 
 namespace ICSharpCode.NRefactory.CSharp.Parser.Statements
 {
-	[TestFixture, Ignore("fixed is not implemented")]
+	[TestFixture]
 	public class FixedStatementTests
 	{
 		[Test]
 		public void FixedStatementTest()
 		{
-			FixedStatement fixedStmt = ParseUtilCSharp.ParseStatement<FixedStatement>("fixed (int* ptr = &myIntArr) { }");
 			ParseUtilCSharp.AssertStatement(
-				"fixed (int* ptr = &myIntArr) { }",
+				"fixed (int* ptr = myIntArr) { }",
 				new FixedStatement {
 					Type = new PrimitiveType("int").MakePointerType(),
 					Variables = {
 						new VariableInitializer {
 							Name = "ptr",
-							Initializer = new UnaryOperatorExpression(UnaryOperatorType.AddressOf, new IdentifierExpression("myIntArr"))
+							Initializer = new IdentifierExpression("myIntArr")
+						}
+					},
+					EmbeddedStatement = new BlockStatement()
+				});
+		}
+		
+		[Test]
+		public void FixedStatementWithMultipleVariables()
+		{
+			ParseUtilCSharp.AssertStatement(
+				"fixed (int* ptr1 = &myIntArr[1], ptr2 = myIntArr) { }",
+				new FixedStatement {
+					Type = new PrimitiveType("int").MakePointerType(),
+					Variables = {
+						new VariableInitializer {
+							Name = "ptr1",
+							Initializer = new UnaryOperatorExpression(
+								UnaryOperatorType.AddressOf, 
+								new IndexerExpression { Target = new IdentifierExpression("myIntArr"), Arguments = { new PrimitiveExpression(1) } })
+						},
+						new VariableInitializer {
+							Name = "ptr2",
+							Initializer = new IdentifierExpression("myIntArr")
 						}
 					},
 					EmbeddedStatement = new BlockStatement()

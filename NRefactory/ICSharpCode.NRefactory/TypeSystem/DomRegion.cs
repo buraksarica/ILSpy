@@ -1,9 +1,23 @@
-﻿// Copyright (c) 2010 AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
+﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
 using System.Globalization;
-using ICSharpCode.NRefactory.CSharp;
 
 namespace ICSharpCode.NRefactory.TypeSystem
 {
@@ -16,7 +30,7 @@ namespace ICSharpCode.NRefactory.TypeSystem
 		readonly int beginColumn;
 		readonly int endColumn;
 		
-		public readonly static DomRegion Empty = new DomRegion(null, -1, -1);
+		public readonly static DomRegion Empty = new DomRegion();
 		
 		public bool IsEmpty {
 			get {
@@ -60,6 +74,22 @@ namespace ICSharpCode.NRefactory.TypeSystem
 			}
 		}
 		
+		public TextLocation Begin {
+			get {
+				return new TextLocation (beginLine, beginColumn);
+			}
+		}
+		
+		public TextLocation End {
+			get {
+				return new TextLocation (endLine, endColumn);
+			}
+		}
+		
+		public DomRegion (int beginLine, int beginColumn, int endLine, int endColumn) : this (null, beginLine, beginColumn, endLine, endColumn)
+		{
+		}
+
 		public DomRegion(string fileName, int beginLine, int beginColumn, int endLine, int endColumn)
 		{
 			this.fileName = fileName;
@@ -69,11 +99,41 @@ namespace ICSharpCode.NRefactory.TypeSystem
 			this.endColumn   = endColumn;
 		}
 		
-		public DomRegion(string fileName, int beginLine, int beginColumn)
+		public DomRegion (int beginLine, int beginColumn) : this (null, beginLine, beginColumn)
+		{
+		}
+		
+		public DomRegion (string fileName, int beginLine, int beginColumn)
 		{
 			this.fileName = fileName;
-			this.beginLine   = beginLine;
+			this.beginLine = beginLine;
 			this.beginColumn = beginColumn;
+			this.endLine = -1;
+			this.endColumn = -1;
+		}
+		
+		public DomRegion (TextLocation begin, TextLocation end) : this (null, begin, end)
+		{
+		}
+		
+		public DomRegion (string fileName, TextLocation begin, TextLocation end)
+		{
+			this.fileName = fileName;
+			this.beginLine = begin.Line;
+			this.beginColumn = begin.Column;
+			this.endLine = end.Line;
+			this.endColumn = end.Column;
+		}
+		
+		public DomRegion (TextLocation begin) : this (null, begin)
+		{
+		}
+		
+		public DomRegion (string fileName, TextLocation begin)
+		{
+			this.fileName = fileName;
+			this.beginLine = begin.Line;
+			this.beginColumn = begin.Column;
 			this.endLine = -1;
 			this.endColumn = -1;
 		}
@@ -92,7 +152,7 @@ namespace ICSharpCode.NRefactory.TypeSystem
 				(line != EndLine   || column <= EndColumn);
 		}
 		
-		public bool IsInside(AstLocation location)
+		public bool IsInside(TextLocation location)
 		{
 			return IsInside(location.Line, location.Column);
 		}
@@ -101,8 +161,8 @@ namespace ICSharpCode.NRefactory.TypeSystem
 		{
 			return string.Format(
 				CultureInfo.InvariantCulture,
-				"[DomRegion FileName={0}, BeginLine={1}, EndLine={2}, BeginColumn={3}, EndColumn={4}]",
-				fileName, beginLine, endLine, beginColumn, endColumn);
+				"[DomRegion FileName={0}, Begin=({1}, {2}), End=({3}, {4})]",
+				fileName, beginLine, beginColumn, endLine, endColumn);
 		}
 		
 		public override bool Equals(object obj)
@@ -114,15 +174,15 @@ namespace ICSharpCode.NRefactory.TypeSystem
 		{
 			unchecked {
 				int hashCode = fileName != null ? fileName.GetHashCode() : 0;
-				hashCode ^= BeginColumn + 1100009 * BeginLine + 1200007 * BeginColumn + 1300021 * EndColumn;
+				hashCode ^= beginColumn + 1100009 * beginLine + 1200007 * endLine + 1300021 * endColumn;
 				return hashCode;
 			}
 		}
 		
 		public bool Equals(DomRegion other)
 		{
-			return BeginLine == other.BeginLine && BeginColumn == other.BeginColumn
-				&& EndLine == other.EndLine && EndColumn == other.EndColumn
+			return beginLine == other.beginLine && beginColumn == other.beginColumn
+				&& endLine == other.endLine && endColumn == other.endColumn
 				&& fileName == other.fileName;
 		}
 		

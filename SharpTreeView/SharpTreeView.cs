@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -119,6 +120,7 @@ namespace ICSharpCode.TreeView
 		}
 
 		TreeFlattener flattener;
+		bool updatesLocked;
 
 		void Reload()
 		{
@@ -130,10 +132,43 @@ namespace ICSharpCode.TreeView
 					Root.IsExpanded = true;
 				}
 				flattener = new TreeFlattener(Root, ShowRoot);
+				flattener.CollectionChanged += flattener_CollectionChanged;
 				this.ItemsSource = flattener;
 			}
 		}
 
+		void flattener_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+		{
+			// Deselect nodes that are being hidden, if any remain in the tree
+			if (e.Action == NotifyCollectionChangedAction.Remove && Items.Count > 0) {
+				List<SharpTreeNode> selectedOldItems = null;
+				foreach (SharpTreeNode node in e.OldItems) {
+					if (node.IsSelected) {
+						if (selectedOldItems == null)
+							selectedOldItems = new List<SharpTreeNode>();
+						selectedOldItems.Add(node);
+					}
+				}
+				if (!updatesLocked && selectedOldItems != null) {
+					var list = SelectedItems.Cast<SharpTreeNode>().Except(selectedOldItems).ToList();
+					UpdateFocusedNode(list, Math.Max(0, e.OldStartingIndex - 1));
+				}
+			}
+		}
+
+		void UpdateFocusedNode(List<SharpTreeNode> newSelection, int topSelectedIndex)
+		{
+			if (updatesLocked) return;
+			SetSelectedItems(newSelection ?? Enumerable.Empty<SharpTreeNode>());
+			if (SelectedItem == null) {
+				// if we removed all selected nodes, then move the focus to the node 
+				// preceding the first of the old selected nodes
+				SelectedIndex = topSelectedIndex;
+				if (SelectedItem != null)
+					FocusNode((SharpTreeNode)SelectedItem);
+			}
+		}
+		
 		protected override DependencyObject GetContainerForItemOverride()
 		{
 			return new SharpTreeViewItem();
@@ -149,10 +184,22 @@ namespace ICSharpCode.TreeView
 			base.PrepareContainerForItemOverride(element, item);
 			SharpTreeViewItem container = element as SharpTreeViewItem;
 			container.ParentTreeView = this;
+			// Make sure that the line renderer takes into account the new bound data
+			if (container.NodeView != null) {
+				container.NodeView.LinesRenderer.InvalidateVisual();
+			}
 		}
 		
+		bool doNotScrollOnExpanding;
+		
+		/// <summary>
+		/// Handles the node expanding event in the tree view.
+		/// This method gets called only if the node is in the visible region (a SharpTreeNodeView exists).
+		/// </summary>
 		internal void HandleExpanding(SharpTreeNode node)
 		{
+			if (doNotScrollOnExpanding)
+				return;
 			SharpTreeNode lastVisibleChild = node;
 			while (true) {
 				SharpTreeNode tmp = lastVisibleChild.Children.LastOrDefault(c => c.IsVisible);
@@ -171,16 +218,6 @@ namespace ICSharpCode.TreeView
 					delegate {
 						base.ScrollIntoView(node);
 					}));
-			}
-		}
-		
-		internal void HandleCollapsing(SharpTreeNode node)
-		{
-			var selectedChilds = node.VisibleDescendants().Where(n => n.IsSelected);
-			if (selectedChilds.Any()) {
-				var list = SelectedItems.Cast<SharpTreeNode>().Except(selectedChilds).ToList();
-				list.AddOnce(node);
-				SetSelectedItems(list);
 			}
 		}
 		
@@ -227,9 +264,26 @@ namespace ICSharpCode.TreeView
 						e.Handled = true;
 					}
 					break;
+				case Key.Multiply:
+					if (container != null && ItemsControl.ItemsControlFromItemContainer(container) == this) {
+						container.Node.IsExpanded = true;
+						ExpandRecursively(container.Node);
+						e.Handled = true;
+					}
+					break;
 			}
 			if (!e.Handled)
 				base.OnKeyDown(e);
+		}
+		
+		void ExpandRecursively(SharpTreeNode node)
+		{
+			if (node.CanExpandRecursively) {
+				node.IsExpanded = true;
+				foreach (SharpTreeNode child in node.Children) {
+					ExpandRecursively(child);
+				}
+			}
 		}
 		
 		/// <summary>
@@ -252,8 +306,10 @@ namespace ICSharpCode.TreeView
 		{
 			if (node == null)
 				throw new ArgumentNullException("node");
+			doNotScrollOnExpanding = true;
 			foreach (SharpTreeNode ancestor in node.Ancestors())
 				ancestor.IsExpanded = true;
+			doNotScrollOnExpanding = false;
 			base.ScrollIntoView(node);
 		}
 		
@@ -583,8 +639,18 @@ namespace ICSharpCode.TreeView
 		static void HandleExecuted_Delete(object sender, ExecutedRoutedEventArgs e)
 		{
 			SharpTreeView treeView = (SharpTreeView)sender;
-			foreach (SharpTreeNode node in treeView.GetTopLevelSelection().ToArray())
-				node.Delete();
+			treeView.updatesLocked = true;
+			int selectedIndex = -1;
+			try {
+				foreach (SharpTreeNode node in treeView.GetTopLevelSelection().ToArray()) {
+					if (selectedIndex == -1)
+						selectedIndex = treeView.flattener.IndexOf(node);
+					node.Delete();
+				}
+			} finally {
+				treeView.updatesLocked = false;
+				treeView.UpdateFocusedNode(null, Math.Max(0, selectedIndex - 1));
+			}
 		}
 
 		static void HandleCanExecute_Delete(object sender, CanExecuteRoutedEventArgs e)
@@ -604,5 +670,10 @@ namespace ICSharpCode.TreeView
 		}
 
 		#endregion
+
+		public void SetSelectedNodes(IEnumerable<SharpTreeNode> nodes)
+		{
+			this.SetSelectedItems(nodes.ToList());
+		}
 	}
 }

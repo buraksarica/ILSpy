@@ -1,157 +1,97 @@
-﻿// Copyright (c) 2010 AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
+﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
-using System.Text;
+using ICSharpCode.NRefactory.Semantics;
 
 namespace ICSharpCode.NRefactory.TypeSystem.Implementation
 {
 	/// <summary>
-	/// Default implementation of <see cref="IAttribute"/>.
+	/// IAttribute implementation for already-resolved attributes.
 	/// </summary>
-	public sealed class DefaultAttribute : AbstractFreezable, IAttribute, ISupportsInterning
+	public class DefaultAttribute : IAttribute
 	{
-		ITypeReference attributeType;
-		readonly ITypeReference[] constructorParameterTypes;
-		DomRegion region;
-		IList<IConstantValue> positionalArguments;
-		IList<KeyValuePair<string, IConstantValue>> namedArguments;
+		readonly IType attributeType;
+		readonly IList<ResolveResult> positionalArguments;
+		readonly IList<KeyValuePair<IMember, ResolveResult>> namedArguments;
+		readonly DomRegion region;
+		volatile IMethod constructor;
 		
-		protected override void FreezeInternal()
-		{
-			positionalArguments = FreezeList(positionalArguments);
-			
-			if (namedArguments == null || namedArguments.Count == 0) {
-				namedArguments = EmptyList<KeyValuePair<string, IConstantValue>>.Instance;
-			} else {
-				namedArguments = Array.AsReadOnly(namedArguments.ToArray());
-				foreach (var pair in namedArguments) {
-					pair.Value.Freeze();
-				}
-			}
-			
-			base.FreezeInternal();
-		}
-		
-		public DefaultAttribute(ITypeReference attributeType, IEnumerable<ITypeReference> constructorParameterTypes)
+		public DefaultAttribute(IType attributeType, IList<ResolveResult> positionalArguments = null,
+		                        IList<KeyValuePair<IMember, ResolveResult>> namedArguments = null,
+		                        DomRegion region = default(DomRegion))
 		{
 			if (attributeType == null)
 				throw new ArgumentNullException("attributeType");
 			this.attributeType = attributeType;
-			this.constructorParameterTypes = constructorParameterTypes != null ? constructorParameterTypes.ToArray() : null;
+			this.positionalArguments = positionalArguments ?? EmptyList<ResolveResult>.Instance;
+			this.namedArguments = namedArguments ?? EmptyList<KeyValuePair<IMember, ResolveResult>>.Instance;
+			this.region = region;
 		}
 		
-		public ITypeReference AttributeType {
+		public DefaultAttribute(IMethod constructor, IList<ResolveResult> positionalArguments = null,
+		                        IList<KeyValuePair<IMember, ResolveResult>> namedArguments = null,
+		                        DomRegion region = default(DomRegion))
+		{
+			if (constructor == null)
+				throw new ArgumentNullException("constructor");
+			this.constructor = constructor;
+			this.attributeType = constructor.DeclaringType;
+			this.positionalArguments = positionalArguments ?? EmptyList<ResolveResult>.Instance;
+			this.namedArguments = namedArguments ?? EmptyList<KeyValuePair<IMember, ResolveResult>>.Instance;
+			this.region = region;
+			if (this.positionalArguments.Count != constructor.Parameters.Count) {
+				throw new ArgumentException("Positional argument count must match the constructor's parameter count");
+			}
+		}
+		
+		public IType AttributeType {
 			get { return attributeType; }
-		}
-		
-		public ReadOnlyCollection<ITypeReference> ConstructorParameterTypes {
-			get { return Array.AsReadOnly(constructorParameterTypes); }
 		}
 		
 		public DomRegion Region {
 			get { return region; }
-			set {
-				CheckBeforeMutation();
-				region = value;
-			}
 		}
 		
-		public IList<IConstantValue> PositionalArguments {
+		public IMethod Constructor {
 			get {
-				if (positionalArguments == null)
-					positionalArguments = new List<IConstantValue>();
-				return positionalArguments;
-			}
-		}
-		
-		public IList<KeyValuePair<string, IConstantValue>> NamedArguments {
-			get {
-				if (namedArguments == null)
-					namedArguments = new List<KeyValuePair<string, IConstantValue>>();
-				return namedArguments;
-			}
-		}
-		
-		public IMethod ResolveConstructor(ITypeResolveContext context)
-		{
-			IType[] parameterTypes = null;
-			if (constructorParameterTypes != null && constructorParameterTypes.Length > 0) {
-				parameterTypes = new IType[constructorParameterTypes.Length];
-				for (int i = 0; i < parameterTypes.Length; i++) {
-					parameterTypes[i] = constructorParameterTypes[i].Resolve(context);
-				}
-			}
-			IMethod bestMatch = null;
-			foreach (IMethod ctor in attributeType.Resolve(context).GetConstructors(context)) {
-				if (ctor.IsStatic)
-					continue;
-				if (parameterTypes == null) {
-					if (ctor.Parameters.Count == 0)
-						return ctor;
-				} else if (ctor.Parameters.Count == parameterTypes.Length) {
-					bestMatch = ctor;
-					bool ok = true;
-					for (int i = 0; i < parameterTypes.Length; i++) {
-						if (ctor.Parameters[i].Type != parameterTypes[i]) {
-							ok = false;
+				IMethod ctor = this.constructor;
+				if (ctor == null) {
+					foreach (IMethod candidate in this.AttributeType.GetConstructors(m => m.Parameters.Count == positionalArguments.Count)) {
+						if (candidate.Parameters.Select(p => p.Type).SequenceEqual(this.PositionalArguments.Select(a => a.Type))) {
+							ctor = candidate;
 							break;
 						}
 					}
-					if (ok)
-						return ctor;
+					this.constructor = ctor;
 				}
+				return ctor;
 			}
-			return bestMatch;
 		}
 		
-		public override string ToString()
-		{
-			StringBuilder b = new StringBuilder();
-			b.Append('[');
-			b.Append(attributeType.ToString());
-			if (this.PositionalArguments.Count + this.NamedArguments.Count > 0) {
-				b.Append('(');
-				bool first = true;
-				foreach (var element in this.PositionalArguments) {
-					if (first) first = false; else b.Append(", ");
-					b.Append(element.ToString());
-				}
-				foreach (var pair in this.NamedArguments) {
-					if (first) first = false; else b.Append(", ");
-					b.Append(pair.Key);
-					b.Append('=');
-					b.Append(pair.Value.ToString());
-				}
-				b.Append(')');
-			}
-			b.Append(']');
-			return b.ToString();
+		public IList<ResolveResult> PositionalArguments {
+			get { return positionalArguments; }
 		}
 		
-		void ISupportsInterning.PrepareForInterning(IInterningProvider provider)
-		{
-			attributeType = provider.Intern(attributeType);
-			if (constructorParameterTypes != null) {
-				for (int i = 0; i < constructorParameterTypes.Length; i++) {
-					constructorParameterTypes[i] = provider.Intern(constructorParameterTypes[i]);
-				}
-			}
-			positionalArguments = provider.InternList(positionalArguments);
-		}
-		
-		int ISupportsInterning.GetHashCodeForInterning()
-		{
-			return attributeType.GetHashCode() ^ (positionalArguments != null ? positionalArguments.GetHashCode() : 0) ^ (namedArguments != null ? namedArguments.GetHashCode() : 0) ^ region.GetHashCode();
-		}
-		
-		bool ISupportsInterning.EqualsForInterning(ISupportsInterning other)
-		{
-			DefaultAttribute a = other as DefaultAttribute;
-			return a != null && attributeType == a.attributeType && positionalArguments == a.positionalArguments && namedArguments == a.namedArguments && region == a.region;
+		public IList<KeyValuePair<IMember, ResolveResult>> NamedArguments {
+			get { return namedArguments; }
 		}
 	}
 }

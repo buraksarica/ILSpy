@@ -1,5 +1,20 @@
-﻿// Copyright (c) 2010 AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
 using System.Collections;
@@ -15,7 +30,7 @@ using NUnit.Framework;
 
 namespace ICSharpCode.NRefactory.TypeSystem
 {
-	//* Not a real unit test
+	/* Not a real unit test
 	[TestFixture]
 	public class TestInterningProvider
 	{
@@ -130,7 +145,7 @@ namespace ICSharpCode.NRefactory.TypeSystem
 			
 			public void InternProject(IProjectContent pc)
 			{
-				foreach (var c in TreeTraversal.PreOrder(pc.GetClasses(), c => c.InnerClasses)) {
+				foreach (var c in TreeTraversal.PreOrder(pc.GetClasses(), c => c.NestedTypes)) {
 					Intern(c.Namespace);
 					Intern(c.Name);
 					foreach (IMember m in c.Members) {
@@ -140,15 +155,36 @@ namespace ICSharpCode.NRefactory.TypeSystem
 			}
 		}
 		
+		IProjectContent[] LoadProjects(CecilLoader loader)
+		{
+			const string dir = @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.0\";
+			return new IProjectContent[] {
+				loader.LoadAssemblyFile(dir + "mscorlib.dll"),
+				loader.LoadAssemblyFile(dir + "System.dll"),
+				loader.LoadAssemblyFile(dir + "System.Core.dll"),
+				loader.LoadAssemblyFile(dir + "System.Xml.dll"),
+				loader.LoadAssemblyFile(dir + "System.Xml.Linq.dll"),
+				loader.LoadAssemblyFile(dir + "System.Data.dll"),
+				loader.LoadAssemblyFile(dir + "System.Drawing.dll"),
+				loader.LoadAssemblyFile(dir + "System.Windows.Forms.dll"),
+				loader.LoadAssemblyFile(dir + "WindowsBase.dll"),
+				loader.LoadAssemblyFile(dir + "PresentationCore.dll"),
+				loader.LoadAssemblyFile(dir + "PresentationFramework.dll")
+			};
+		}
+		
 		[Test]
 		public void PrintStatistics()
 		{
 			long startMemory = GC.GetTotalMemory(true);
-			IProjectContent pc = new CecilLoader().LoadAssemblyFile(typeof(object).Assembly.Location);
+			IProjectContent[] pc = LoadProjects(new CecilLoader());
 			long memoryWithFullPC = GC.GetTotalMemory(true) - startMemory;
 			InterningProvider p = new InterningProvider();
-			p.InternProject(pc);
+			CecilLoader loader = new CecilLoader();
+			loader.InterningProvider = p;
+			pc = LoadProjects(loader);
 			PrintStatistics(p);
+			loader = null;
 			p = null;
 			long memoryWithInternedPC = GC.GetTotalMemory(true) - startMemory;
 			GC.KeepAlive(pc);

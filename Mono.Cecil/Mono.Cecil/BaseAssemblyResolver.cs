@@ -4,7 +4,7 @@
 // Author:
 //   Jb Evain (jbevain@gmail.com)
 //
-// Copyright (c) 2008 - 2010 Jb Evain
+// Copyright (c) 2008 - 2011 Jb Evain
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -49,6 +49,33 @@ namespace Mono.Cecil {
 		{
 			this.reference = reference;
 		}
+	}
+
+#if !SILVERLIGHT && !CF
+	[Serializable]
+#endif
+	public class AssemblyResolutionException : FileNotFoundException {
+
+		readonly AssemblyNameReference reference;
+
+		public AssemblyNameReference AssemblyReference {
+			get { return reference; }
+		}
+
+		public AssemblyResolutionException (AssemblyNameReference reference)
+			: base (string.Format ("Failed to resolve assembly: '{0}'", reference))
+		{
+			this.reference = reference;
+		}
+
+#if !SILVERLIGHT && !CF
+		protected AssemblyResolutionException (
+			System.Runtime.Serialization.SerializationInfo info,
+			System.Runtime.Serialization.StreamingContext context)
+			: base (info, context)
+		{
+		}
+#endif
 	}
 
 	public abstract class BaseAssemblyResolver : IAssemblyResolver {
@@ -152,7 +179,7 @@ namespace Mono.Cecil {
 					return assembly;
 			}
 
-			throw new FileNotFoundException ("Could not resolve: " + name);
+			throw new AssemblyResolutionException (name);
 		}
 
 		AssemblyDefinition SearchDirectory (AssemblyNameReference name, IEnumerable<string> directories, ReaderParameters parameters)

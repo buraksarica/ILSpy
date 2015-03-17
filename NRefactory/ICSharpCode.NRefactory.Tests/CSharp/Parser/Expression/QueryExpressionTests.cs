@@ -1,12 +1,28 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
+﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Linq;
 using NUnit.Framework;
 
 namespace ICSharpCode.NRefactory.CSharp.Parser.Expression
 {
-	[TestFixture, Ignore("Query expressions not yet implemented")]
+	[TestFixture]
 	public class QueryExpressionTests
 	{
 		[Test]
@@ -125,19 +141,17 @@ select new { c.Name, o.OrderID, o.Total }",
 						},
 						new QueryWhereClause {
 							Condition = new BinaryOperatorExpression {
-								Left = new IdentifierExpression("c").Member("OrderDate").Member("Year"),
+								Left = new IdentifierExpression("o").Member("OrderDate").Member("Year"),
 								Operator = BinaryOperatorType.Equality,
 								Right = new PrimitiveExpression(2005)
 							}
 						},
 						new QuerySelectClause {
-							Expression = new ObjectCreateExpression {
-								Initializer = new ArrayInitializerExpression {
-									Elements = {
-										new IdentifierExpression("c").Member("Name"),
-										new IdentifierExpression("o").Member("OrderID"),
-										new IdentifierExpression("o").Member("Total")
-									}
+							Expression = new AnonymousTypeCreateExpression {
+								Initializers = {
+									new IdentifierExpression("c").Member("Name"),
+									new IdentifierExpression("o").Member("OrderID"),
+									new IdentifierExpression("o").Member("Total")
 								}
 							}
 						}
@@ -167,7 +181,127 @@ select new { c.Name, o.OrderID, o.Total }",
 						}
 					}});
 		}
+
+		[Test]
+		public void ExpressionWithOrderByWithTwoOrderings()
+		{
+			ParseUtilCSharp.AssertExpression(
+				"from c in customers orderby c.Name, c.Address select c",
+				new QueryExpression {
+					Clauses = {
+						new QueryFromClause {
+							Identifier = "c",
+							Expression = new IdentifierExpression("customers")
+						},
+						new QueryOrderClause {
+							Orderings = {
+								new QueryOrdering {
+									Expression = new IdentifierExpression("c").Member("Name")
+								},
+								new QueryOrdering {
+									Expression = new IdentifierExpression("c").Member("Address")
+								}
+							}
+						},
+						new QuerySelectClause {
+							Expression = new IdentifierExpression("c")
+						}
+					}});
+		}
+
+		[Test]
+		public void ExpressionWithOrderByWithTwoOrderBys()
+		{
+			ParseUtilCSharp.AssertExpression(
+				"from c in customers orderby c.Name orderby c.Address select c",
+				new QueryExpression {
+					Clauses = {
+						new QueryFromClause {
+							Identifier = "c",
+							Expression = new IdentifierExpression("customers")
+						},
+						new QueryOrderClause {
+							Orderings = {
+								new QueryOrdering {
+									Expression = new IdentifierExpression("c").Member("Name")
+								}
+							}
+						},
+						new QueryOrderClause {
+							Orderings = {
+								new QueryOrdering {
+									Expression = new IdentifierExpression("c").Member("Address")
+								}
+							}
+						},
+						new QuerySelectClause {
+							Expression = new IdentifierExpression("c")
+						}
+					}});
+		}
 		
+		[Test]
+		public void ExpressionWithOrderByWithTwoOrderingsDescending()
+		{
+			ParseUtilCSharp.AssertExpression(
+				"from c in customers orderby c.Name descending, c.Address descending select c",
+				new QueryExpression {
+					Clauses = {
+						new QueryFromClause {
+							Identifier = "c",
+							Expression = new IdentifierExpression("customers")
+						},
+						new QueryOrderClause {
+							Orderings = {
+								new QueryOrdering {
+									Expression = new IdentifierExpression("c").Member("Name"),
+									Direction = QueryOrderingDirection.Descending
+								},
+								new QueryOrdering {
+									Expression = new IdentifierExpression("c").Member("Address"),
+									Direction = QueryOrderingDirection.Descending
+								}
+							}
+						},
+						new QuerySelectClause {
+							Expression = new IdentifierExpression("c")
+						}
+					}});
+		}
+
+		[Test]
+		public void ExpressionWithOrderByWithTwoOrderByDecendings()
+		{
+			ParseUtilCSharp.AssertExpression(
+				"from c in customers orderby c.Name descending orderby c.Address descending select c",
+				new QueryExpression {
+					Clauses = {
+						new QueryFromClause {
+							Identifier = "c",
+							Expression = new IdentifierExpression("customers")
+						},
+						new QueryOrderClause {
+							Orderings = {
+								new QueryOrdering {
+									Expression = new IdentifierExpression("c").Member("Name"),
+									Direction = QueryOrderingDirection.Descending
+								}
+							}
+						},
+						new QueryOrderClause {
+							Orderings = {
+								new QueryOrdering {
+									Expression = new IdentifierExpression("c").Member("Address"),
+									Direction = QueryOrderingDirection.Descending
+								}
+							}
+						},
+						new QuerySelectClause {
+							Expression = new IdentifierExpression("c")
+						}
+					}});
+		}
+
 		[Test]
 		public void ExpressionWithOrderByAndLet()
 		{
@@ -220,6 +354,132 @@ select new { c.Name, o.OrderID, o.Total }",
 					}
 				}
 			);
+		}
+		
+		
+		[Test]
+		public void QueryContinuationWithMultipleFrom()
+		{
+			ParseUtilCSharp.AssertExpression(
+				"from a in b from c in d select e into f select g",
+				new QueryExpression {
+					Clauses = {
+						new QueryContinuationClause {
+							PrecedingQuery = new QueryExpression {
+								Clauses = {
+									new QueryFromClause {
+										Identifier = "a",
+										Expression = new IdentifierExpression("b")
+									},
+									new QueryFromClause {
+										Identifier = "c",
+										Expression = new IdentifierExpression("d")
+									},
+									new QuerySelectClause { Expression = new IdentifierExpression("e") }
+								}
+							},
+							Identifier = "f"
+						},
+						new QuerySelectClause { Expression = new IdentifierExpression("g") }
+					}
+				}
+			);
+		}
+		
+		[Test]
+		public void MultipleQueryContinuation()
+		{
+			ParseUtilCSharp.AssertExpression(
+				"from a in b select c into d select e into f select g",
+				new QueryExpression {
+					Clauses = {
+						new QueryContinuationClause {
+							PrecedingQuery = new QueryExpression {
+								Clauses = {
+									new QueryContinuationClause {
+										PrecedingQuery = new QueryExpression {
+											Clauses = {
+												new QueryFromClause {
+													Identifier = "a",
+													Expression = new IdentifierExpression("b")
+												},
+												new QuerySelectClause { Expression = new IdentifierExpression("c") }
+											}
+										},
+										Identifier = "d"
+									},
+									new QuerySelectClause { Expression = new IdentifierExpression("e") }
+								}
+							},
+							Identifier = "f"
+						},
+						new QuerySelectClause { Expression = new IdentifierExpression("g") }
+					}});
+		}
+		
+		[Test]
+		public void QueryWithGroupBy()
+		{
+			ParseUtilCSharp.AssertExpression(
+				"from a in b group c by d",
+				new QueryExpression {
+					Clauses = {
+						new QueryFromClause {
+							Identifier = "a",
+							Expression = new IdentifierExpression("b")
+						},
+						new QueryGroupClause {
+							Projection = new IdentifierExpression("c"),
+							Key = new IdentifierExpression("d")
+						}
+					}});
+		}
+		
+		[Test]
+		public void QueryWithJoin()
+		{
+			ParseUtilCSharp.AssertExpression(
+				"from a in b join c in d on e equals f select g",
+				new QueryExpression {
+					Clauses = {
+						new QueryFromClause {
+							Identifier = "a",
+							Expression = new IdentifierExpression("b")
+						},
+						new QueryJoinClause {
+							JoinIdentifier = "c",
+							InExpression = new IdentifierExpression("d"),
+							OnExpression = new IdentifierExpression("e"),
+							EqualsExpression = new IdentifierExpression("f")
+						},
+						new QuerySelectClause {
+							Expression = new IdentifierExpression("g")
+						}
+					}});
+		}
+		
+		[Test]
+		public void QueryWithGroupJoin()
+		{
+			ParseUtilCSharp.AssertExpression(
+				"from a in b join c in d on e equals f into g select h",
+				new QueryExpression {
+					Clauses = {
+						new QueryFromClause {
+							Identifier = "a",
+							Expression = new IdentifierExpression("b")
+						},
+						new QueryJoinClause {
+							JoinIdentifier = "c",
+							InExpression = new IdentifierExpression("d"),
+							OnExpression = new IdentifierExpression("e"),
+							EqualsExpression = new IdentifierExpression("f"),
+							IntoIdentifier = "g"
+						},
+						new QuerySelectClause {
+							Expression = new IdentifierExpression("h")
+						}
+					}});
 		}
 	}
 }

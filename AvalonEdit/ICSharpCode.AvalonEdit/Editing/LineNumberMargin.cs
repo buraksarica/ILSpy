@@ -1,7 +1,23 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under the GNU LGPL (for details please see \doc\license.txt)
+﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -28,8 +44,17 @@ namespace ICSharpCode.AvalonEdit.Editing
 		
 		TextArea textArea;
 		
-		Typeface typeface;
-		double emSize;
+		/// <summary>
+		/// The typeface used for rendering the line number margin.
+		/// This field is calculated in MeasureOverride() based on the FontFamily etc. properties.
+		/// </summary>
+		protected Typeface typeface;
+		
+		/// <summary>
+		/// The font size used for rendering the line number margin.
+		/// This field is calculated in MeasureOverride() based on the FontFamily etc. properties.
+		/// </summary>
+		protected double emSize;
 		
 		/// <inheritdoc/>
 		protected override Size MeasureOverride(Size availableSize)
@@ -61,8 +86,8 @@ namespace ICSharpCode.AvalonEdit.Editing
 						lineNumber.ToString(CultureInfo.CurrentCulture),
 						typeface, emSize, foreground
 					);
-					drawingContext.DrawText(text, new Point(renderSize.Width - text.Width,
-					                                        line.VisualTop - textView.VerticalOffset));
+					double y = line.GetTextLineVisualYPosition(line.TextLines[0], VisualYPosition.TextTop);
+					drawingContext.DrawText(text, new Point(renderSize.Width - text.Width, y - textView.VerticalOffset));
 				}
 			}
 		}
@@ -78,7 +103,7 @@ namespace ICSharpCode.AvalonEdit.Editing
 				newTextView.VisualLinesChanged += TextViewVisualLinesChanged;
 				
 				// find the text area belonging to the new text view
-				textArea = newTextView.Services.GetService(typeof(TextArea)) as TextArea;
+				textArea = newTextView.GetService(typeof(TextArea)) as TextArea;
 			} else {
 				textArea = null;
 			}
@@ -89,11 +114,11 @@ namespace ICSharpCode.AvalonEdit.Editing
 		protected override void OnDocumentChanged(TextDocument oldDocument, TextDocument newDocument)
 		{
 			if (oldDocument != null) {
-				TextDocumentWeakEventManager.LineCountChanged.RemoveListener(oldDocument, this);
+				PropertyChangedEventManager.RemoveListener(oldDocument, this, "LineCount");
 			}
 			base.OnDocumentChanged(oldDocument, newDocument);
 			if (newDocument != null) {
-				TextDocumentWeakEventManager.LineCountChanged.AddListener(newDocument, this);
+				PropertyChangedEventManager.AddListener(newDocument, this, "LineCount");
 			}
 			OnDocumentLineCountChanged();
 		}
@@ -101,7 +126,7 @@ namespace ICSharpCode.AvalonEdit.Editing
 		/// <inheritdoc cref="IWeakEventListener.ReceiveWeakEvent"/>
 		protected virtual bool ReceiveWeakEvent(Type managerType, object sender, EventArgs e)
 		{
-			if (managerType == typeof(TextDocumentWeakEventManager.LineCountChanged)) {
+			if (managerType == typeof(PropertyChangedEventManager)) {
 				OnDocumentLineCountChanged();
 				return true;
 			}
@@ -113,7 +138,10 @@ namespace ICSharpCode.AvalonEdit.Editing
 			return ReceiveWeakEvent(managerType, sender, e);
 		}
 		
-		int maxLineNumberLength = 1;
+		/// <summary>
+		/// Maximum length of a line number, in characters
+		/// </summary>
+		protected int maxLineNumberLength = 1;
 		
 		void OnDocumentLineCountChanged()
 		{
@@ -157,12 +185,13 @@ namespace ICSharpCode.AvalonEdit.Editing
 					if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift) {
 						SimpleSelection simpleSelection = textArea.Selection as SimpleSelection;
 						if (simpleSelection != null)
-							selectionStart = new AnchorSegment(Document, simpleSelection);
+							selectionStart = new AnchorSegment(Document, simpleSelection.SurroundingSegment);
 					}
-					textArea.Selection = new SimpleSelection(selectionStart);
+					textArea.Selection = Selection.Create(textArea, selectionStart);
 					if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift) {
 						ExtendSelection(currentSeg);
 					}
+					textArea.Caret.BringCaretToView(5.0);
 				}
 			}
 		}
@@ -171,6 +200,7 @@ namespace ICSharpCode.AvalonEdit.Editing
 		{
 			Point pos = e.GetPosition(TextView);
 			pos.X = 0;
+			pos.Y = pos.Y.CoerceValue(0, TextView.ActualHeight);
 			pos.Y += TextView.VerticalOffset;
 			VisualLine vl = TextView.GetVisualLineFromVisualTop(pos.Y);
 			if (vl == null)
@@ -190,10 +220,10 @@ namespace ICSharpCode.AvalonEdit.Editing
 		{
 			if (currentSeg.Offset < selectionStart.Offset) {
 				textArea.Caret.Offset = currentSeg.Offset;
-				textArea.Selection = new SimpleSelection(currentSeg.Offset, selectionStart.Offset + selectionStart.Length);
+				textArea.Selection = Selection.Create(textArea, currentSeg.Offset, selectionStart.Offset + selectionStart.Length);
 			} else {
 				textArea.Caret.Offset = currentSeg.Offset + currentSeg.Length;
-				textArea.Selection = new SimpleSelection(selectionStart.Offset, currentSeg.Offset + currentSeg.Length);
+				textArea.Selection = Selection.Create(textArea, selectionStart.Offset, currentSeg.Offset + currentSeg.Length);
 			}
 		}
 		
@@ -206,6 +236,7 @@ namespace ICSharpCode.AvalonEdit.Editing
 				if (currentSeg == SimpleSegment.Invalid)
 					return;
 				ExtendSelection(currentSeg);
+				textArea.Caret.BringCaretToView(5.0);
 			}
 			base.OnMouseMove(e);
 		}

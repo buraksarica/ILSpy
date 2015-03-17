@@ -18,14 +18,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Threading;
+using System.Windows.Documents;
 using ICSharpCode.Decompiler;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.TreeView;
@@ -41,35 +39,46 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	public sealed class AssemblyTreeNode : ILSpyTreeNode
 	{
 		readonly LoadedAssembly assembly;
-		readonly List<TypeTreeNode> classes = new List<TypeTreeNode>();
 		readonly Dictionary<string, NamespaceTreeNode> namespaces = new Dictionary<string, NamespaceTreeNode>();
-		
+
 		public AssemblyTreeNode(LoadedAssembly assembly)
 		{
 			if (assembly == null)
 				throw new ArgumentNullException("assembly");
-			
+
 			this.assembly = assembly;
-			
+
 			assembly.ContinueWhenLoaded(OnAssemblyLoaded, TaskScheduler.FromCurrentSynchronizationContext());
-			
+
 			this.LazyLoading = true;
 		}
-		
-		public AssemblyList AssemblyList {
+
+		public AssemblyList AssemblyList
+		{
 			get { return assembly.AssemblyList; }
 		}
-		
-		public LoadedAssembly LoadedAssembly {
+
+		public LoadedAssembly LoadedAssembly
+		{
 			get { return assembly; }
 		}
-		
-		public override object Text {
-			get { return HighlightSearchMatch(assembly.ShortName); }
+
+		public override bool IsAutoLoaded
+		{
+			get { 
+				return assembly.IsAutoLoaded; 
+			}
 		}
-		
-		public override object Icon {
-			get {
+
+		public override object Text
+		{
+			get { return HighlightSearchMatch(assembly.Text); }
+		}
+
+		public override object Icon
+		{
+			get
+			{
 				if (assembly.IsLoaded) {
 					return assembly.HasLoadError ? Images.AssemblyWarning : Images.Assembly;
 				} else {
@@ -77,41 +86,74 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				}
 			}
 		}
-		
-		public override bool ShowExpander {
+
+		TextBlock tooltip;
+
+		public override object ToolTip
+		{
+			get {
+				if (assembly.HasLoadError)
+					return "Assembly could not be loaded. Click here for details.";
+
+				if (tooltip == null) {
+					tooltip = new TextBlock();
+					tooltip.Inlines.Add(new Bold(new Run("Name: ")));
+					tooltip.Inlines.Add(new Run(assembly.AssemblyDefinition.FullName));
+					tooltip.Inlines.Add(new LineBreak());
+					tooltip.Inlines.Add(new Bold(new Run("Location: ")));
+					tooltip.Inlines.Add(new Run(assembly.FileName));
+					tooltip.Inlines.Add(new LineBreak());
+					tooltip.Inlines.Add(new Bold(new Run("Architecture: ")));
+					tooltip.Inlines.Add(new Run(CSharpLanguage.GetPlatformDisplayName(assembly.AssemblyDefinition.MainModule)));
+					string runtimeName = CSharpLanguage.GetRuntimeDisplayName(assembly.AssemblyDefinition.MainModule);
+					if (runtimeName != null) {
+						tooltip.Inlines.Add(new LineBreak());
+						tooltip.Inlines.Add(new Bold(new Run("Runtime: ")));
+						tooltip.Inlines.Add(new Run(runtimeName));
+					}
+				}
+
+				return tooltip;
+			}
+		}
+
+		public override bool ShowExpander
+		{
 			get { return !assembly.HasLoadError; }
 		}
-		
-		void OnAssemblyLoaded(Task<AssemblyDefinition> assemblyTask)
+
+		void OnAssemblyLoaded(Task<ModuleDefinition> moduleTask)
 		{
 			// change from "Loading" icon to final icon
 			RaisePropertyChanged("Icon");
 			RaisePropertyChanged("ExpandedIcon");
-			if (assemblyTask.IsFaulted) {
+			if (moduleTask.IsFaulted) {
 				RaisePropertyChanged("ShowExpander"); // cannot expand assemblies with load error
+				// observe the exception so that the Task's finalizer doesn't re-throw it
+				try { moduleTask.Wait(); }
+				catch (AggregateException) { }
 			} else {
 				RaisePropertyChanged("Text"); // shortname might have changed
 			}
 		}
-		
-		Dictionary<TypeDefinition, TypeTreeNode> typeDict = new Dictionary<TypeDefinition, TypeTreeNode>();
-		
+
+		readonly Dictionary<TypeDefinition, TypeTreeNode> typeDict = new Dictionary<TypeDefinition, TypeTreeNode>();
+
 		protected override void LoadChildren()
 		{
-			AssemblyDefinition assemblyDefinition = assembly.AssemblyDefinition;
-			if (assemblyDefinition == null) {
+			ModuleDefinition moduleDefinition = assembly.ModuleDefinition;
+			if (moduleDefinition == null) {
 				// if we crashed on loading, then we don't have any children
 				return;
 			}
-			ModuleDefinition mainModule = assemblyDefinition.MainModule;
-			
-			this.Children.Add(new ReferenceFolderTreeNode(mainModule, this));
-			if (mainModule.HasResources)
-				this.Children.Add(new ResourceListTreeNode(mainModule));
+
+			this.Children.Add(new ReferenceFolderTreeNode(moduleDefinition, this));
+			if (moduleDefinition.HasResources)
+				this.Children.Add(new ResourceListTreeNode(moduleDefinition));
 			foreach (NamespaceTreeNode ns in namespaces.Values) {
 				ns.Children.Clear();
 			}
-			foreach (TypeDefinition type in mainModule.Types.OrderBy(t => t.FullName)) {
+			foreach (TypeDefinition type in moduleDefinition.Types.OrderBy(t => t.FullName)) {
 				NamespaceTreeNode ns;
 				if (!namespaces.TryGetValue(type.Namespace, out ns)) {
 					ns = new NamespaceTreeNode(type.Namespace);
@@ -127,6 +169,13 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			}
 		}
 		
+		public override bool CanExpandRecursively {
+			get { return true; }
+		}
+
+		/// <summary>
+		/// Finds the node for a top-level type.
+		/// </summary>
 		public TypeTreeNode FindTypeNode(TypeDefinition def)
 		{
 			if (def == null)
@@ -138,43 +187,56 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			else
 				return null;
 		}
+
+		/// <summary>
+		/// Finds the node for a namespace.
+		/// </summary>
+		public NamespaceTreeNode FindNamespaceNode(string namespaceName)
+		{
+			if (string.IsNullOrEmpty(namespaceName))
+				return null;
+			EnsureLazyChildren();
+			NamespaceTreeNode node;
+			if (namespaces.TryGetValue(namespaceName, out node))
+				return node;
+			else
+				return null;
+		}
 		
 		public override bool CanDrag(SharpTreeNode[] nodes)
 		{
 			return nodes.All(n => n is AssemblyTreeNode);
 		}
-		
+
 		public override void StartDrag(DependencyObject dragSource, SharpTreeNode[] nodes)
 		{
 			DragDrop.DoDragDrop(dragSource, Copy(nodes), DragDropEffects.All);
 		}
-		
+
 		public override bool CanDelete()
 		{
 			return true;
 		}
-		
+
 		public override void Delete()
 		{
 			DeleteCore();
 		}
-		
+
 		public override void DeleteCore()
 		{
-			lock (assembly.AssemblyList.assemblies) {
-				assembly.AssemblyList.assemblies.Remove(assembly);
-			}
+			assembly.AssemblyList.Unload(assembly);
 		}
-		
+
 		internal const string DataFormat = "ILSpyAssemblies";
-		
+
 		public override IDataObject Copy(SharpTreeNode[] nodes)
 		{
 			DataObject dataObject = new DataObject();
 			dataObject.SetData(DataFormat, nodes.OfType<AssemblyTreeNode>().Select(n => n.LoadedAssembly.FileName).ToArray());
 			return dataObject;
 		}
-		
+
 		public override FilterResult Filter(FilterSettings settings)
 		{
 			if (settings.SearchTermMatches(assembly.ShortName))
@@ -182,13 +244,23 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			else
 				return FilterResult.Recurse;
 		}
-		
+
 		public override void Decompile(Language language, ITextOutput output, DecompilationOptions options)
 		{
-			assembly.WaitUntilLoaded(); // necessary so that load errors are passed on to the caller
-			language.DecompileAssembly(assembly.AssemblyDefinition, assembly.FileName, output, options);
+			try {
+				assembly.WaitUntilLoaded(); // necessary so that load errors are passed on to the caller
+			} catch (AggregateException ex) {
+				language.WriteCommentLine(output, assembly.FileName);
+				if (ex.InnerException is BadImageFormatException) {
+					language.WriteCommentLine(output, "This file does not contain a managed assembly.");
+					return;
+				} else {
+					throw;
+				}
+			}
+			language.DecompileAssembly(assembly, output, options);
 		}
-		
+
 		public override bool Save(DecompilerTextView textView)
 		{
 			Language language = this.Language;
@@ -215,30 +287,95 @@ namespace ICSharpCode.ILSpy.TreeNodes
 						}
 					}
 				}
-				textView.SaveToDisk(language, new[]{this}, options, dlg.FileName);
+				textView.SaveToDisk(language, new[] { this }, options, dlg.FileName);
 			}
 			return true;
 		}
 	}
-	
-	[ExportContextMenuEntry(Header = "_Remove", Icon = "images/Delete.png")]
+
+	[ExportContextMenuEntryAttribute(Header = "_Remove", Icon = "images/Delete.png")]
 	sealed class RemoveAssembly : IContextMenuEntry
 	{
-		public bool IsVisible(SharpTreeNode[] selectedNodes)
+		public bool IsVisible(TextViewContext context)
 		{
-			return selectedNodes.All(n => n is AssemblyTreeNode);
+			if (context.SelectedTreeNodes == null)
+				return false;
+			return context.SelectedTreeNodes.All(n => n is AssemblyTreeNode);
 		}
-		
-		public bool IsEnabled(SharpTreeNode[] selectedNodes)
+
+		public bool IsEnabled(TextViewContext context)
 		{
 			return true;
 		}
-		
-		public void Execute(SharpTreeNode[] selectedNodes)
+
+		public void Execute(TextViewContext context)
 		{
-			foreach (var node in selectedNodes) {
+			if (context.SelectedTreeNodes == null)
+				return;
+			foreach (var node in context.SelectedTreeNodes) {
 				node.Delete();
 			}
+		}
+	}
+
+	[ExportContextMenuEntryAttribute(Header = "_Load Dependencies")]
+	sealed class LoadDependencies : IContextMenuEntry
+	{
+		public bool IsVisible(TextViewContext context)
+		{
+			if (context.SelectedTreeNodes == null)
+				return false;
+			return context.SelectedTreeNodes.All(n => n is AssemblyTreeNode);
+		}
+
+		public bool IsEnabled(TextViewContext context)
+		{
+			return true;
+		}
+
+		public void Execute(TextViewContext context)
+		{
+			if (context.SelectedTreeNodes == null)
+				return;
+			foreach (var node in context.SelectedTreeNodes) {
+				var la = ((AssemblyTreeNode)node).LoadedAssembly;
+				if (!la.HasLoadError) {
+					foreach (var assyRef in la.ModuleDefinition.AssemblyReferences) {
+						la.LookupReferencedAssembly(assyRef.FullName);
+					}
+				}
+			}
+			MainWindow.Instance.RefreshDecompiledView();
+		}
+	}
+
+	[ExportContextMenuEntryAttribute(Header = "_Add To Main List")]
+	sealed class AddToMainList : IContextMenuEntry
+	{
+		public bool IsVisible(TextViewContext context)
+		{
+			if (context.SelectedTreeNodes == null)
+				return false;
+			return context.SelectedTreeNodes.Where(n => n is AssemblyTreeNode).Any(n=>((AssemblyTreeNode)n).IsAutoLoaded);
+		}
+
+		public bool IsEnabled(TextViewContext context)
+		{
+			return true;
+		}
+
+		public void Execute(TextViewContext context)
+		{
+			if (context.SelectedTreeNodes == null)
+				return;
+			foreach (var node in context.SelectedTreeNodes) {
+				var loadedAssm = ((AssemblyTreeNode)node).LoadedAssembly;
+				if (!loadedAssm.HasLoadError) {
+					loadedAssm.IsAutoLoaded = false;
+					node.RaisePropertyChanged("Foreground");
+				}
+			}
+			MainWindow.Instance.CurrentAssemblyList.RefreshSave();
 		}
 	}
 }

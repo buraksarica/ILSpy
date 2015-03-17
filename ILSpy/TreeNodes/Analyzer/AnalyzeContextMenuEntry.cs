@@ -18,40 +18,72 @@
 
 using System;
 using System.Linq;
+using System.Windows;
 using ICSharpCode.TreeView;
 using Mono.Cecil;
 
 namespace ICSharpCode.ILSpy.TreeNodes.Analyzer
 {
-	[ExportContextMenuEntry(Header = "Analyze", Icon = "images/Search.png")]
-	sealed class AnalyzeContextMenuEntry : IContextMenuEntry
+	[ExportContextMenuEntryAttribute(Header = "Analyze", Icon = "images/Search.png")]
+	internal sealed class AnalyzeContextMenuEntry : IContextMenuEntry
 	{
-		public bool IsVisible(SharpTreeNode[] selectedNodes)
+		public bool IsVisible(TextViewContext context)
 		{
-			return selectedNodes.All(n => n is IMemberTreeNode);
+			if (context.TreeView is AnalyzerTreeView && context.SelectedTreeNodes != null && context.SelectedTreeNodes.All(n => n.Parent.IsRoot))
+				return false;
+			if (context.SelectedTreeNodes == null)
+				return context.Reference != null && context.Reference.Reference is MemberReference;
+			return context.SelectedTreeNodes.All(n => n is IMemberTreeNode);
 		}
-		
-		public bool IsEnabled(SharpTreeNode[] selectedNodes)
+
+		public bool IsEnabled(TextViewContext context)
 		{
-			foreach (IMemberTreeNode node in selectedNodes) {
-				if (!(node.Member is FieldDefinition || node.Member is MethodDefinition))
+			if (context.SelectedTreeNodes == null)
+				return context.Reference != null && context.Reference.Reference is MemberReference;
+			foreach (IMemberTreeNode node in context.SelectedTreeNodes) {
+				if (!(node.Member is TypeDefinition
+				      || node.Member is FieldDefinition
+				      || node.Member is MethodDefinition
+				      || AnalyzedPropertyTreeNode.CanShow(node.Member)
+				      || AnalyzedEventTreeNode.CanShow(node.Member)))
 					return false;
 			}
+
 			return true;
 		}
-		
-		public void Execute(SharpTreeNode[] selectedNodes)
+
+		public void Execute(TextViewContext context)
 		{
-			// TODO: figure out when equivalent nodes are already present
-			// and focus those instead.
-			foreach (IMemberTreeNode node in selectedNodes) {
-				FieldDefinition field = node.Member as FieldDefinition;
-				if (field != null)
-					MainWindow.Instance.AddToAnalyzer(new AnalyzedFieldNode(field));
-				MethodDefinition method = node.Member as MethodDefinition;
-				if (method != null)
-					MainWindow.Instance.AddToAnalyzer(new AnalyzedMethodTreeNode(method));
+			if (context.SelectedTreeNodes != null) {
+				foreach (IMemberTreeNode node in context.SelectedTreeNodes) {
+					Analyze(node.Member);
+				}
+			} else if (context.Reference != null && context.Reference.Reference is MemberReference) {
+				if (context.Reference.Reference is MemberReference)
+					Analyze((MemberReference)context.Reference.Reference);
+				// TODO: implement support for other references: ParameterReference, etc.
 			}
+		}
+
+		public static void Analyze(MemberReference member)
+		{
+			TypeDefinition type = null;
+			if (member is TypeReference)
+				type = ((TypeReference)member).Resolve();
+			if (type != null)
+				AnalyzerTreeView.Instance.ShowOrFocus(new AnalyzedTypeTreeNode(type.Resolve()));
+			FieldDefinition field = member as FieldDefinition;
+			if (field != null)
+				AnalyzerTreeView.Instance.ShowOrFocus(new AnalyzedFieldTreeNode(field));
+			MethodDefinition method = member as MethodDefinition;
+			if (method != null)
+				AnalyzerTreeView.Instance.ShowOrFocus(new AnalyzedMethodTreeNode(method));
+			var propertyAnalyzer = AnalyzedPropertyTreeNode.TryCreateAnalyzer(member);
+			if (propertyAnalyzer != null)
+				AnalyzerTreeView.Instance.ShowOrFocus(propertyAnalyzer);
+			var eventAnalyzer = AnalyzedEventTreeNode.TryCreateAnalyzer(member);
+			if (eventAnalyzer != null)
+				AnalyzerTreeView.Instance.ShowOrFocus(eventAnalyzer);
 		}
 	}
 }

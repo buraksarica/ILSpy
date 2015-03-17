@@ -1,16 +1,21 @@
 ILSpy is the open-source .NET assembly browser and decompiler.
 Website: http://www.ilspy.net/
 
-Copyright 2011 AlphaSierraPapa for the SharpDevelop team
-License: ILSpy is MIT/X11
+Copyright 2011-2014 AlphaSierraPapa for the SharpDevelop team
+License: ILSpy is distributed under the MIT License.
 
 Included open-source libraries:
- Mono.Cecil: MIT/X11 (thanks to Jb Evain)
+ Mono.Cecil: MIT License (thanks to Jb Evain)
  AvalonEdit: LGPL
  SharpTreeView: LGPL
- ICSharpCode.Decompiler: MIT/X11 (developed as part of ILSpy)
+ ICSharpCode.Decompiler: MIT License (developed as part of ILSpy)
+ Ricciolo.StylesExplorer: MS-PL (part of ILSpy.BamlDecompiler.Plugin)
 
 ILSpy Contributors:
 	Daniel Grunwald
 	David Srbecky
+	Ed Harvey
 	Siegfried Pammer
+	Artur Zgodzinski
+	Eusebiu Marcu
+	Pent Ploompuu

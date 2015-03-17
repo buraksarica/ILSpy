@@ -17,18 +17,22 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Linq;
 using ICSharpCode.TreeView;
 
 namespace ICSharpCode.ILSpy.TreeNodes.Analyzer
 {
-	public class AnalyzerTreeNode : SharpTreeNode
+	public abstract class AnalyzerTreeNode : SharpTreeNode
 	{
-		Language language;
-		
-		public Language Language {
+		private Language language;
+
+		public Language Language
+		{
 			get { return language; }
-			set {
+			set
+			{
 				if (language != value) {
 					language = value;
 					foreach (var child in this.Children.OfType<AnalyzerTreeNode>())
@@ -36,23 +40,23 @@ namespace ICSharpCode.ILSpy.TreeNodes.Analyzer
 				}
 			}
 		}
-		
+
 		public override bool CanDelete()
 		{
 			return Parent != null && Parent.IsRoot;
 		}
-		
+
 		public override void DeleteCore()
 		{
 			Parent.Children.Remove(this);
 		}
-		
+
 		public override void Delete()
 		{
 			DeleteCore();
 		}
-		
-		protected override void OnChildrenChanged(System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+
+		protected override void OnChildrenChanged(NotifyCollectionChangedEventArgs e)
 		{
 			if (e.NewItems != null) {
 				foreach (AnalyzerTreeNode a in e.NewItems.OfType<AnalyzerTreeNode>())
@@ -60,5 +64,10 @@ namespace ICSharpCode.ILSpy.TreeNodes.Analyzer
 			}
 			base.OnChildrenChanged(e);
 		}
+		
+		/// <summary>
+		/// Handles changes to the assembly list.
+		/// </summary>
+		public abstract bool HandleAssemblyListChanged(ICollection<LoadedAssembly> removedAssemblies, ICollection<LoadedAssembly> addedAssemblies);
 	}
 }

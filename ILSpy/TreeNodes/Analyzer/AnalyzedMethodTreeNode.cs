@@ -21,42 +21,51 @@ using Mono.Cecil;
 
 namespace ICSharpCode.ILSpy.TreeNodes.Analyzer
 {
-	class AnalyzedMethodTreeNode : AnalyzerTreeNode, IMemberTreeNode
+	internal class AnalyzedMethodTreeNode : AnalyzerEntityTreeNode
 	{
-		MethodDefinition analyzedMethod;
-		
-		public AnalyzedMethodTreeNode(MethodDefinition analyzedMethod)
+		private readonly MethodDefinition analyzedMethod;
+		private readonly string prefix;
+
+		public AnalyzedMethodTreeNode(MethodDefinition analyzedMethod, string prefix = "")
 		{
 			if (analyzedMethod == null)
 				throw new ArgumentNullException("analyzedMethod");
 			this.analyzedMethod = analyzedMethod;
+			this.prefix = prefix;
 			this.LazyLoading = true;
 		}
-		
-		public override object Icon {
+
+		public override object Icon
+		{
 			get { return MethodTreeNode.GetIcon(analyzedMethod); }
 		}
-		
-		public override object Text {
-			get { return Language.TypeToString(analyzedMethod.DeclaringType, true) + "." + MethodTreeNode.GetText(analyzedMethod, Language); }
-		}
-		
-		public override void ActivateItem(System.Windows.RoutedEventArgs e)
+
+		public override object Text
 		{
-			e.Handled = true;
-			MainWindow.Instance.JumpToReference(analyzedMethod);
+			get
+			{
+				return prefix + Language.TypeToString(analyzedMethod.DeclaringType, true) + "." + MethodTreeNode.GetText(analyzedMethod, Language);
+			}
 		}
-		
+
 		protected override void LoadChildren()
 		{
 			if (analyzedMethod.HasBody)
-				this.Children.Add(new AnalyzedMethodUsesNode(analyzedMethod));
-			this.Children.Add(new AnalyzedMethodUsedByTreeNode(analyzedMethod));
-			if (analyzedMethod.IsVirtual && !analyzedMethod.IsFinal && !analyzedMethod.DeclaringType.IsInterface) // interfaces are temporarly disabled
-				this.Children.Add(new AnalyzerMethodOverridesTreeNode(analyzedMethod));
+				this.Children.Add(new AnalyzedMethodUsesTreeNode(analyzedMethod));
+
+			if (analyzedMethod.IsVirtual && !(analyzedMethod.IsNewSlot && analyzedMethod.IsFinal))
+				this.Children.Add(new AnalyzedVirtualMethodUsedByTreeNode(analyzedMethod));
+			else
+				this.Children.Add(new AnalyzedMethodUsedByTreeNode(analyzedMethod));
+
+			if (AnalyzedMethodOverridesTreeNode.CanShow(analyzedMethod))
+				this.Children.Add(new AnalyzedMethodOverridesTreeNode(analyzedMethod));
+
+			if (AnalyzedInterfaceMethodImplementedByTreeNode.CanShow(analyzedMethod))
+				this.Children.Add(new AnalyzedInterfaceMethodImplementedByTreeNode(analyzedMethod));
 		}
-		
-		MemberReference IMemberTreeNode.Member {
+
+		public override MemberReference Member {
 			get { return analyzedMethod; }
 		}
 	}

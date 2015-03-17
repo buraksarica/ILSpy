@@ -1,22 +1,10 @@
 ﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under the GNU LGPL (for details please see \doc\license.txt)
+// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
 
 using System;
 
 namespace ICSharpCode.NRefactory.VB.Parser
 {
-	public enum LiteralFormat : byte
-	{
-		None,
-		DecimalNumber,
-		HexadecimalNumber,
-		OctalNumber,
-		StringLiteral,
-		VerbatimStringLiteral,
-		CharLiteral,
-		DateTimeLiteral
-	}
-	
 	public class Token
 	{
 		internal readonly int kind;
@@ -24,18 +12,13 @@ namespace ICSharpCode.NRefactory.VB.Parser
 		internal readonly int col;
 		internal readonly int line;
 		
-		internal readonly LiteralFormat literalFormat;
 		internal readonly object literalValue;
 		internal readonly string val;
 		internal Token next;
-		readonly Location endLocation;
+		readonly TextLocation endLocation;
 		
 		public int Kind {
 			get { return kind; }
-		}
-		
-		public LiteralFormat LiteralFormat {
-			get { return literalFormat; }
 		}
 		
 		public object LiteralValue {
@@ -46,13 +29,13 @@ namespace ICSharpCode.NRefactory.VB.Parser
 			get { return val; }
 		}
 		
-		public Location EndLocation {
+		public TextLocation EndLocation {
 			get { return endLocation; }
 		}
 		
-		public Location Location {
+		public TextLocation Location {
 			get {
-				return new Location(col, line);
+				return new TextLocation(line, col);
 			}
 		}
 		
@@ -65,7 +48,7 @@ namespace ICSharpCode.NRefactory.VB.Parser
 		{
 		}
 		
-		public Token(int kind, Location startLocation, Location endLocation) : this(kind, startLocation, endLocation, "", null, LiteralFormat.None)
+		public Token(int kind, TextLocation startLocation, TextLocation endLocation) : this(kind, startLocation, endLocation, "", null)
 		{
 		}
 		
@@ -75,15 +58,15 @@ namespace ICSharpCode.NRefactory.VB.Parser
 			this.col          = col;
 			this.line         = line;
 			this.val          = val;
-			this.endLocation  = new Location(col + (val == null ? 1 : val.Length), line);
+			this.endLocation  = new TextLocation(line, col + (val == null ? 1 : val.Length));
 		}
 		
-		internal Token(int kind, int x, int y, string val, object literalValue, LiteralFormat literalFormat)
-			: this(kind, new Location(x, y), new Location(x + val.Length, y), val, literalValue, literalFormat)
+		internal Token(int kind, int x, int y, string val, object literalValue)
+			: this(kind, new TextLocation(y, x), new TextLocation(y, x + val.Length), val, literalValue)
 		{
 		}
 		
-		public Token(int kind, Location startLocation, Location endLocation, string val, object literalValue, LiteralFormat literalFormat)
+		public Token(int kind, TextLocation startLocation, TextLocation endLocation, string val, object literalValue)
 		{
 			this.kind         = kind;
 			this.col          = startLocation.Column;
@@ -91,7 +74,6 @@ namespace ICSharpCode.NRefactory.VB.Parser
 			this.endLocation = endLocation;
 			this.val          = val;
 			this.literalValue = literalValue;
-			this.literalFormat = literalFormat;
 		}
 		
 		public override string ToString()

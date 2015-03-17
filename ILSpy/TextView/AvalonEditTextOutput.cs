@@ -22,9 +22,10 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Windows;
+
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Folding;
-using ICSharpCode.AvalonEdit.Utils;
+using ICSharpCode.AvalonEdit.Rendering;
 using ICSharpCode.Decompiler;
 
 namespace ICSharpCode.ILSpy.TextView
@@ -32,9 +33,11 @@ namespace ICSharpCode.ILSpy.TextView
 	/// <summary>
 	/// A text segment that references some object. Used for hyperlinks in the editor.
 	/// </summary>
-	sealed class ReferenceSegment : TextSegment
+	public sealed class ReferenceSegment : TextSegment
 	{
 		public object Reference;
+		public bool IsLocal;
+		public bool IsLocalTarget;
 	}
 	
 	/// <summary>
@@ -42,7 +45,7 @@ namespace ICSharpCode.ILSpy.TextView
 	/// </summary>
 	sealed class DefinitionLookup
 	{
-		Dictionary<object, int> definitions = new Dictionary<object, int>();
+		internal Dictionary<object, int> definitions = new Dictionary<object, int>();
 		
 		public int GetDefinitionPosition(object definition)
 		{
@@ -64,12 +67,16 @@ namespace ICSharpCode.ILSpy.TextView
 	/// </summary>
 	public sealed class AvalonEditTextOutput : ISmartTextOutput
 	{
+		int lastLineStart = 0;
+		int lineNumber = 1;
 		readonly StringBuilder b = new StringBuilder();
 		
 		/// <summary>Current indentation level</summary>
 		int indent;
 		/// <summary>Whether indentation should be inserted on the next write</summary>
 		bool needsIndent;
+		
+		internal readonly List<VisualLineElementGenerator> elementGenerators = new List<VisualLineElementGenerator>();
 		
 		/// <summary>List of all references that were written to the output</summary>
 		TextSegmentCollection<ReferenceSegment> references = new TextSegmentCollection<ReferenceSegment>();
@@ -85,11 +92,22 @@ namespace ICSharpCode.ILSpy.TextView
 		/// <summary>Embedded UIElements, see <see cref="UIElementGenerator"/>.</summary>
 		internal readonly List<KeyValuePair<int, Lazy<UIElement>>> UIElements = new List<KeyValuePair<int, Lazy<UIElement>>>();
 		
+		internal readonly List<MemberMapping> DebuggerMemberMappings = new List<MemberMapping>();
+		
+		public AvalonEditTextOutput()
+		{
+		}
+		
 		/// <summary>
 		/// Gets the list of references (hyperlinks).
 		/// </summary>
 		internal TextSegmentCollection<ReferenceSegment> References {
 			get { return references; }
+		}
+		
+		public void AddVisualLineElementGenerator(VisualLineElementGenerator elementGenerator)
+		{
+			elementGenerators.Add(elementGenerator);
 		}
 		
 		/// <summary>
@@ -101,6 +119,12 @@ namespace ICSharpCode.ILSpy.TextView
 		
 		public int TextLength {
 			get { return b.Length; }
+		}
+		
+		public ICSharpCode.NRefactory.TextLocation Location {
+			get {
+				return new ICSharpCode.NRefactory.TextLocation(lineNumber, b.Length - lastLineStart + 1 + (needsIndent ? indent : 0));
+			}
 		}
 		
 		#region Text Document
@@ -173,25 +197,30 @@ namespace ICSharpCode.ILSpy.TextView
 			Debug.Assert(textDocument == null);
 			b.AppendLine();
 			needsIndent = true;
+			lastLineStart = b.Length;
+			lineNumber++;
 			if (this.TextLength > LengthLimit) {
 				throw new OutputLengthExceededException();
 			}
 		}
 		
-		public void WriteDefinition(string text, object definition)
-		{
-			WriteIndent();
-			b.Append(text);
-			this.DefinitionLookup.AddDefinition(definition, this.TextLength);
-		}
-		
-		public void WriteReference(string text, object reference)
+		public void WriteDefinition(string text, object definition, bool isLocal)
 		{
 			WriteIndent();
 			int start = this.TextLength;
 			b.Append(text);
 			int end = this.TextLength;
-			references.Add(new ReferenceSegment { StartOffset = start, EndOffset = end, Reference = reference });
+			this.DefinitionLookup.AddDefinition(definition, this.TextLength);
+			references.Add(new ReferenceSegment { StartOffset = start, EndOffset = end, Reference = definition, IsLocal = isLocal, IsLocalTarget = true });
+		}
+		
+		public void WriteReference(string text, object reference, bool isLocal)
+		{
+			WriteIndent();
+			int start = this.TextLength;
+			b.Append(text);
+			int end = this.TextLength;
+			references.Add(new ReferenceSegment { StartOffset = start, EndOffset = end, Reference = reference, IsLocal = isLocal });
 		}
 		
 		public void MarkFoldStart(string collapsedText, bool defaultCollapsed)
@@ -219,6 +248,11 @@ namespace ICSharpCode.ILSpy.TextView
 					throw new InvalidOperationException("Only one UIElement is allowed for each position in the document");
 				this.UIElements.Add(new KeyValuePair<int, Lazy<UIElement>>(this.TextLength, new Lazy<UIElement>(element)));
 			}
+		}
+		
+		public void AddDebuggerMemberMapping(MemberMapping memberMapping)
+		{
+			DebuggerMemberMappings.Add(memberMapping);
 		}
 	}
 }

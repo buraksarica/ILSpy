@@ -14,14 +14,14 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 		{
 			var section = (AttributeSection)attribute.Parent;
 			SimpleType type = attribute.Type as SimpleType;
-			if (section.AttributeTarget == AttributeTarget.Assembly &&
-				(type.Identifier == "CompilationRelaxations" || type.Identifier == "RuntimeCompatibility"))
+			if (section.AttributeTarget == "assembly" &&
+				(type.Identifier == "CompilationRelaxations" || type.Identifier == "RuntimeCompatibility" || type.Identifier == "SecurityPermission" || type.Identifier == "AssemblyVersion" || type.Identifier == "Debuggable"))
 			{
 				attribute.Remove();
 				if (section.Attributes.Count == 0)
 					section.Remove();
 			}
-			if (section.AttributeTarget == AttributeTarget.Module && type.Identifier == "UnverifiableCode")
+			if (section.AttributeTarget == "module" && type.Identifier == "UnverifiableCode")
 			{
 				attribute.Remove();
 				if (section.Attributes.Count == 0)

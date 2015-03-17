@@ -1,15 +1,39 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
+﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
 
 public class IncrementDecrement
 {
+	[Flags]
+	private enum MyEnum
+	{
+		None = 0,
+		One = 1,
+		Two = 2,
+		Four = 4
+	}
+	
 	public class MutableClass
 	{
 		public int Field;
 		
-		public int Property 
+		public int Property
 		{
 			get;
 			set;
@@ -27,11 +51,12 @@ public class IncrementDecrement
 		}
 	}
 	
+	private IncrementDecrement.MyEnum enumField;
 	public static int StaticField;
 	
 	public static int StaticProperty
-	{ 
-		get; 
+	{
+		get;
 		set;
 	}
 	
@@ -155,9 +180,21 @@ public class IncrementDecrement
 		return *ptr /= 1.5;
 	}
 	
+	public void CompoundAssignEnum()
+	{
+		this.enumField |= IncrementDecrement.MyEnum.Two;
+		this.enumField &= ~IncrementDecrement.MyEnum.Four;
+	}
+	
 	public int PostIncrementInAddition(int i, int j)
 	{
 		return i++ + j;
+	}
+	
+	public void PostIncrementInlineLocalVariable(Func<int, int> f)
+	{
+		int num = 0;
+		f(num++);
 	}
 	
 	public int PostIncrementArrayElement(int[] array, int pos)
@@ -184,7 +221,12 @@ public class IncrementDecrement
 //	{
 //		return this.M()[name]++;
 //	}
-	
+
+//	public unsafe int PostIncrementOfPointer(int* ptr)
+//	{
+//		return *(ptr++);
+//	}
+
 	public int PostIncrementInstanceField()
 	{
 		return this.M().Field--;
@@ -209,9 +251,4 @@ public class IncrementDecrement
 	{
 		return (*this.GetPointer())++;
 	}
-	
-//	public unsafe int PostIncrementOfPointer(int* ptr)
-//	{
-//		return *(ptr++);
-//	}
 }

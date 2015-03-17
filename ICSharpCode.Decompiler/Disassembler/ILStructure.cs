@@ -88,10 +88,12 @@ namespace ICSharpCode.Decompiler.Disassembler
 			: this(ILStructureType.Root, 0, body.CodeSize)
 		{
 			// Build the tree of exception structures:
-			foreach (ExceptionHandler eh in body.ExceptionHandlers) {
-				AddNestedStructure(new ILStructure(ILStructureType.Try, eh.TryStart.Offset, eh.TryEnd.Offset, eh));
+			for (int i = 0; i < body.ExceptionHandlers.Count; i++) {
+				ExceptionHandler eh = body.ExceptionHandlers[i];
+				if (!body.ExceptionHandlers.Take(i).Any(oldEh => oldEh.TryStart == eh.TryStart && oldEh.TryEnd == eh.TryEnd))
+					AddNestedStructure(new ILStructure(ILStructureType.Try, eh.TryStart.Offset, eh.TryEnd.Offset, eh));
 				if (eh.HandlerType == ExceptionHandlerType.Filter)
-					AddNestedStructure(new ILStructure(ILStructureType.Filter, eh.FilterStart.Offset, eh.FilterEnd.Offset, eh));
+					AddNestedStructure(new ILStructure(ILStructureType.Filter, eh.FilterStart.Offset, eh.HandlerStart.Offset, eh));
 				AddNestedStructure(new ILStructure(ILStructureType.Handler, eh.HandlerStart.Offset, eh.HandlerEnd == null ? body.CodeSize : eh.HandlerEnd.Offset, eh));
 			}
 			// Very simple loop detection: look for backward branches

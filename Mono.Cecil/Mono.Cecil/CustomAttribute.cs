@@ -4,7 +4,7 @@
 // Author:
 //   Jb Evain (jbevain@gmail.com)
 //
-// Copyright (c) 2008 - 2010 Jb Evain
+// Copyright (c) 2008 - 2011 Jb Evain
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -188,7 +188,7 @@ namespace Mono.Cecil {
 			if (blob != null)
 				return blob;
 
-			if (!HasImage || signature == 0)
+			if (!HasImage)
 				throw new NotSupportedException ();
 
 			return Module.Read (ref blob, this, (attribute, reader) => reader.ReadCustomAttributeBlob (attribute.signature));
@@ -210,7 +210,7 @@ namespace Mono.Cecil {
 						fields.Clear ();
 					if (properties != null)
 						properties.Clear ();
-					
+
 					resolved = false;
 				}
 				return this;

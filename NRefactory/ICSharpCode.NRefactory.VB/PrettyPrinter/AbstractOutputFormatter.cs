@@ -1,5 +1,5 @@
 ﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under the GNU LGPL (for details please see \doc\license.txt)
+// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
 
 using System;
 using System.Collections;
@@ -196,19 +196,19 @@ namespace ICSharpCode.NRefactory.VB.PrettyPrinter
 			}
 		}
 		
-		public abstract void PrintComment(Comment comment, bool forceWriteInPreviousBlock);
+//		public abstract void PrintComment(Comment comment, bool forceWriteInPreviousBlock);
 		
-		public virtual void PrintPreprocessingDirective(PreprocessingDirective directive, bool forceWriteInPreviousBlock)
-		{
-			if (!directive.Expression.IsNull) {
-//				CSharpOutputVisitor visitor = new CSharpOutputVisitor();
-//				directive.Expression.AcceptVisitor(visitor, null);
-//				WriteLineInPreviousLine(directive.Cmd + " " + visitor.Text, forceWriteInPreviousBlock);
-			} else if (string.IsNullOrEmpty(directive.Arg))
-				WriteLineInPreviousLine(directive.Cmd, forceWriteInPreviousBlock);
-			else
-				WriteLineInPreviousLine(directive.Cmd + " " + directive.Arg, forceWriteInPreviousBlock);
-		}
+//		public virtual void PrintPreprocessingDirective(PreprocessingDirective directive, bool forceWriteInPreviousBlock)
+//		{
+//			if (!directive.Expression.IsNull) {
+////				CSharpOutputVisitor visitor = new CSharpOutputVisitor();
+////				directive.Expression.AcceptVisitor(visitor, null);
+////				WriteLineInPreviousLine(directive.Cmd + " " + visitor.Text, forceWriteInPreviousBlock);
+//			} else if (string.IsNullOrEmpty(directive.Arg))
+//				WriteLineInPreviousLine(directive.Cmd, forceWriteInPreviousBlock);
+//			else
+//				WriteLineInPreviousLine(directive.Cmd + " " + directive.Arg, forceWriteInPreviousBlock);
+//		}
 		
 		public void PrintBlankLine(bool forceWriteInPreviousBlock)
 		{

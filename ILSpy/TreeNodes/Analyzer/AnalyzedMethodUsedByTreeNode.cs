@@ -17,87 +17,78 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
-using ICSharpCode.NRefactory.Utils;
-using ICSharpCode.TreeView;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
 namespace ICSharpCode.ILSpy.TreeNodes.Analyzer
 {
-	class AnalyzedMethodUsedByTreeNode : AnalyzerTreeNode
+	internal sealed class AnalyzedMethodUsedByTreeNode : AnalyzerSearchTreeNode
 	{
-		MethodDefinition analyzedMethod;
-		ThreadingSupport threading;
-		
+		private readonly MethodDefinition analyzedMethod;
+		private ConcurrentDictionary<MethodDefinition, int> foundMethods;
+
 		public AnalyzedMethodUsedByTreeNode(MethodDefinition analyzedMethod)
 		{
 			if (analyzedMethod == null)
 				throw new ArgumentNullException("analyzedMethod");
-			
+
 			this.analyzedMethod = analyzedMethod;
-			this.threading = new ThreadingSupport();
-			this.LazyLoading = true;
 		}
-		
-		public override object Text {
+
+		public override object Text
+		{
 			get { return "Used By"; }
 		}
-		
-		public override object Icon {
-			get { return Images.Search; }
-		}
-		
-		protected override void LoadChildren()
+
+		protected override IEnumerable<AnalyzerTreeNode> FetchChildren(CancellationToken ct)
 		{
-			threading.LoadChildren(this, FetchChildren);
-		}
-		
-		protected override void OnCollapsing()
-		{
-			if (threading.IsRunning) {
-				this.LazyLoading = true;
-				threading.Cancel();
-				this.Children.Clear();
+			foundMethods = new ConcurrentDictionary<MethodDefinition, int>();
+
+			var analyzer = new ScopedWhereUsedAnalyzer<AnalyzerTreeNode>(analyzedMethod, FindReferencesInType);
+			foreach (var child in analyzer.PerformAnalysis(ct).OrderBy(n => n.Text)) {
+				yield return child;
 			}
+
+			foundMethods = null;
 		}
-		
-		IEnumerable<SharpTreeNode> FetchChildren(CancellationToken ct)
-		{
-			return FindReferences(MainWindow.Instance.AssemblyList.GetAssemblies(), ct);
-		}
-		
-		IEnumerable<SharpTreeNode> FindReferences(LoadedAssembly[] assemblies, CancellationToken ct)
-		{
-			// use parallelism only on the assembly level (avoid locks within Cecil)
-			return assemblies.AsParallel().WithCancellation(ct).SelectMany((LoadedAssembly asm) => FindReferences(asm, ct));
-		}
-		
-		IEnumerable<SharpTreeNode> FindReferences(LoadedAssembly asm, CancellationToken ct)
+
+		private IEnumerable<AnalyzerTreeNode> FindReferencesInType(TypeDefinition type)
 		{
 			string name = analyzedMethod.Name;
-			string declTypeName = analyzedMethod.DeclaringType.FullName;
-			foreach (TypeDefinition type in TreeTraversal.PreOrder(asm.AssemblyDefinition.MainModule.Types, t => t.NestedTypes)) {
-				ct.ThrowIfCancellationRequested();
-				foreach (MethodDefinition method in type.Methods) {
-					ct.ThrowIfCancellationRequested();
-					bool found = false;
-					if (!method.HasBody)
-						continue;
-					foreach (Instruction instr in method.Body.Instructions) {
-						MethodReference mr = instr.Operand as MethodReference;
-						if (mr != null && mr.Name == name && mr.DeclaringType.FullName == declTypeName && mr.Resolve() == analyzedMethod) {
-							found = true;
-							break;
-						}
+			foreach (MethodDefinition method in type.Methods) {
+				bool found = false;
+				if (!method.HasBody)
+					continue;
+				foreach (Instruction instr in method.Body.Instructions) {
+					MethodReference mr = instr.Operand as MethodReference;
+					if (mr != null && mr.Name == name &&
+						Helpers.IsReferencedBy(analyzedMethod.DeclaringType, mr.DeclaringType) &&
+						mr.Resolve() == analyzedMethod) {
+						found = true;
+						break;
 					}
-					if (found)
-						yield return new AnalyzedMethodTreeNode(method);
+				}
+
+				method.Body = null;
+
+				if (found) {
+					MethodDefinition codeLocation = this.Language.GetOriginalCodeLocation(method) as MethodDefinition;
+					if (codeLocation != null && !HasAlreadyBeenFound(codeLocation)) {
+						var node= new AnalyzedMethodTreeNode(codeLocation);
+						node.Language = this.Language;
+						yield return node;
+					}
 				}
 			}
+		}
+
+		private bool HasAlreadyBeenFound(MethodDefinition method)
+		{
+			return !foundMethods.TryAdd(method, 0);
 		}
 	}
 }

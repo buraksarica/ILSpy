@@ -1,17 +1,24 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under the GNU LGPL (for details please see \doc\license.txt)
+﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Diagnostics;
 using System.Text.RegularExpressions;
-using System.Windows;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.TextFormatting;
-
-using ICSharpCode.AvalonEdit.Document;
-using System.Windows.Navigation;
+using ICSharpCode.AvalonEdit.Utils;
 
 namespace ICSharpCode.AvalonEdit.Rendering
 {
@@ -65,35 +72,49 @@ namespace ICSharpCode.AvalonEdit.Rendering
 			this.RequireControlModifierForClick = options.RequireControlModifierForHyperlinkClick;
 		}
 		
-		Match GetMatch(int startOffset)
+		Match GetMatch(int startOffset, out int matchOffset)
 		{
 			int endOffset = CurrentContext.VisualLine.LastDocumentLine.EndOffset;
-			string relevantText = CurrentContext.Document.GetText(startOffset, endOffset - startOffset);
-			return linkRegex.Match(relevantText);
+			StringSegment relevantText = CurrentContext.GetText(startOffset, endOffset - startOffset);
+			Match m = linkRegex.Match(relevantText.Text, relevantText.Offset, relevantText.Count);
+			matchOffset = m.Success ? m.Index - relevantText.Offset + startOffset : -1;
+			return m;
 		}
 		
 		/// <inheritdoc/>
 		public override int GetFirstInterestedOffset(int startOffset)
 		{
-			Match m = GetMatch(startOffset);
-			return m.Success ? startOffset + m.Index : -1;
+			int matchOffset;
+			GetMatch(startOffset, out matchOffset);
+			return matchOffset;
 		}
 		
 		/// <inheritdoc/>
 		public override VisualLineElement ConstructElement(int offset)
 		{
-			Match m = GetMatch(offset);
-			if (m.Success && m.Index == 0) {
-				Uri uri = GetUriFromMatch(m);
-				if (uri == null)
-					return null;
-				VisualLineLinkText linkText = new VisualLineLinkText(CurrentContext.VisualLine, m.Length);
-				linkText.NavigateUri = uri;
-				linkText.RequireControlModifierForClick = this.RequireControlModifierForClick;
-				return linkText;
+			int matchOffset;
+			Match m = GetMatch(offset, out matchOffset);
+			if (m.Success && matchOffset == offset) {
+				return ConstructElementFromMatch(m);
 			} else {
 				return null;
 			}
+		}
+		
+		/// <summary>
+		/// Constructs a VisualLineElement that replaces the matched text.
+		/// The default implementation will create a <see cref="VisualLineLinkText"/>
+		/// based on the URI provided by <see cref="GetUriFromMatch"/>.
+		/// </summary>
+		protected virtual VisualLineElement ConstructElementFromMatch(Match m)
+		{
+			Uri uri = GetUriFromMatch(m);
+			if (uri == null)
+				return null;
+			VisualLineLinkText linkText = new VisualLineLinkText(CurrentContext.VisualLine, m.Length);
+			linkText.NavigateUri = uri;
+			linkText.RequireControlModifierForClick = this.RequireControlModifierForClick;
+			return linkText;
 		}
 		
 		/// <summary>
@@ -130,7 +151,6 @@ namespace ICSharpCode.AvalonEdit.Rendering
 		{
 		}
 		
-		/// <inheritdoc/>
 		protected override Uri GetUriFromMatch(Match match)
 		{
 			return new Uri("mailto:" + match.Value);

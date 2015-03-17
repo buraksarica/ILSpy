@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -58,7 +59,7 @@ namespace ICSharpCode.Decompiler
 			throw new NotSupportedException ();
 		}
 		
-		public static int GetPopDelta(this Instruction instruction, MethodDefinition current, int currentStackSize)
+		public static int? GetPopDelta(this Instruction instruction, MethodDefinition methodDef)
 		{
 			OpCode code = instruction.OpCode;
 			switch (code.StackBehaviourPop) {
@@ -88,11 +89,11 @@ namespace ICSharpCode.Decompiler
 					return 3;
 
 				case StackBehaviour.PopAll:
-					return currentStackSize;
+					return null;
 
 				case StackBehaviour.Varpop:
 					if (code == OpCodes.Ret)
-						return IsVoid (current.ReturnType) ? 0 : 1;
+						return methodDef.ReturnType.IsVoid() ? 0 : 1;
 
 					if (code.FlowControl != FlowControl.Call)
 						break;
@@ -101,6 +102,8 @@ namespace ICSharpCode.Decompiler
 					int count = method.HasParameters ? method.Parameters.Count : 0;
 					if (method.HasThis && code != OpCodes.Newobj)
 						++count;
+					if (code == OpCodes.Calli)
+						++count; // calli takes a function pointer in additional to the normal args
 
 					return count;
 			}
@@ -110,7 +113,9 @@ namespace ICSharpCode.Decompiler
 		
 		public static bool IsVoid(this TypeReference type)
 		{
-			return type.FullName == "System.Void" && !(type is TypeSpecification);
+			while (type is OptionalModifierType || type is RequiredModifierType)
+				type = ((TypeSpecification)type).ElementType;
+			return type.MetadataType == MetadataType.Void;
 		}
 		
 		public static bool IsValueTypeOrVoid(this TypeReference type)
@@ -121,6 +126,41 @@ namespace ICSharpCode.Decompiler
 				return false;
 			return type.IsValueType || type.IsVoid();
 		}
+
+		/// <summary>
+		/// checks if the given TypeReference is one of the following types:
+		/// [sbyte, short, int, long, IntPtr]
+		/// </summary>
+		public static bool IsSignedIntegralType(this TypeReference type)
+		{
+			return type.MetadataType == MetadataType.SByte ||
+				   type.MetadataType == MetadataType.Int16 ||
+				   type.MetadataType == MetadataType.Int32 ||
+				   type.MetadataType == MetadataType.Int64 ||
+				   type.MetadataType == MetadataType.IntPtr;
+		}
+
+		/// <summary>
+		/// checks if the given value is a numeric zero-value.
+		/// NOTE that this only works for types: [sbyte, short, int, long, IntPtr, byte, ushort, uint, ulong, float, double and decimal]
+		/// </summary>
+		public static bool IsZero(this object value)
+		{
+			return value.Equals((sbyte)0) ||
+				   value.Equals((short)0) ||
+				   value.Equals(0) ||
+				   value.Equals(0L) ||
+				   value.Equals(IntPtr.Zero) ||
+				   value.Equals((byte)0) ||
+				   value.Equals((ushort)0) ||
+				   value.Equals(0u) ||
+				   value.Equals(0UL) ||
+				   value.Equals(0.0f) ||
+				   value.Equals(0.0) ||
+				   value.Equals((decimal)0);
+					
+		}
+
 		#endregion
 		
 		/// <summary>
@@ -128,6 +168,8 @@ namespace ICSharpCode.Decompiler
 		/// </summary>
 		public static int GetEndOffset(this Instruction inst)
 		{
+			if (inst == null)
+				throw new ArgumentNullException("inst");
 			return inst.Offset + inst.GetSize();
 		}
 		
@@ -182,7 +224,16 @@ namespace ICSharpCode.Decompiler
 			else
 				return null;
 		}
-		
+
+		[Obsolete("throwing exceptions is considered a bug")]
+		public static TypeDefinition ResolveOrThrow(this TypeReference typeReference)
+		{
+			var resolved = typeReference.Resolve();
+			if (resolved == null)
+				throw new ReferenceResolvingException();
+			return resolved;
+		}
+
 		public static bool IsCompilerGenerated(this ICustomAttributeProvider provider)
 		{
 			if (provider != null && provider.HasCustomAttributes) {
@@ -201,6 +252,123 @@ namespace ICSharpCode.Decompiler
 			if (member.IsCompilerGenerated())
 				return true;
 			return IsCompilerGeneratedOrIsInCompilerGeneratedClass(member.DeclaringType);
+		}
+
+		public static TypeReference GetEnumUnderlyingType(this TypeDefinition type)
+		{
+			if (!type.IsEnum)
+				throw new ArgumentException("Type must be an enum", "type");
+
+			var fields = type.Fields;
+
+			for (int i = 0; i < fields.Count; i++)
+			{
+				var field = fields[i];
+				if (!field.IsStatic)
+					return field.FieldType;
+			}
+
+			throw new NotSupportedException();
+		}
+		
+		public static bool IsAnonymousType(this TypeReference type)
+		{
+			if (type == null)
+				return false;
+			if (string.IsNullOrEmpty(type.Namespace) && type.HasGeneratedName() && (type.Name.Contains("AnonType") || type.Name.Contains("AnonymousType"))) {
+				TypeDefinition td = type.Resolve();
+				return td != null && td.IsCompilerGenerated();
+			}
+			return false;
+		}
+
+		public static bool HasGeneratedName(this MemberReference member)
+		{
+			return member.Name.StartsWith("<", StringComparison.Ordinal);
+		}
+		
+		public static bool ContainsAnonymousType(this TypeReference type)
+		{
+			GenericInstanceType git = type as GenericInstanceType;
+			if (git != null) {
+				if (IsAnonymousType(git))
+					return true;
+				for (int i = 0; i < git.GenericArguments.Count; i++) {
+					if (git.GenericArguments[i].ContainsAnonymousType())
+						return true;
+				}
+				return false;
+			}
+			TypeSpecification typeSpec = type as TypeSpecification;
+			if (typeSpec != null)
+				return typeSpec.ElementType.ContainsAnonymousType();
+			else
+				return false;
+		}
+
+		public static string GetDefaultMemberName(this TypeDefinition type)
+		{
+			CustomAttribute attr;
+			return type.GetDefaultMemberName(out attr);
+		}
+
+		public static string GetDefaultMemberName(this TypeDefinition type, out CustomAttribute defaultMemberAttribute)
+		{
+			if (type.HasCustomAttributes)
+				foreach (CustomAttribute ca in type.CustomAttributes)
+					if (ca.Constructor.DeclaringType.Name == "DefaultMemberAttribute" && ca.Constructor.DeclaringType.Namespace == "System.Reflection"
+						&& ca.Constructor.FullName == @"System.Void System.Reflection.DefaultMemberAttribute::.ctor(System.String)") {
+						defaultMemberAttribute = ca;
+						return ca.ConstructorArguments[0].Value as string;
+					}
+			defaultMemberAttribute = null;
+			return null;
+		}
+
+		public static bool IsIndexer(this PropertyDefinition property)
+		{
+			CustomAttribute attr;
+			return property.IsIndexer(out attr);
+		}
+
+		public static bool IsIndexer(this PropertyDefinition property, out CustomAttribute defaultMemberAttribute)
+		{
+			defaultMemberAttribute = null;
+			if (property.HasParameters) {
+				var accessor = property.GetMethod ?? property.SetMethod;
+				PropertyDefinition basePropDef = property;
+				if (accessor.HasOverrides) {
+					// if the property is explicitly implementing an interface, look up the property in the interface:
+					MethodDefinition baseAccessor = accessor.Overrides.First().Resolve();
+					if (baseAccessor != null) {
+						foreach (PropertyDefinition baseProp in baseAccessor.DeclaringType.Properties) {
+							if (baseProp.GetMethod == baseAccessor || baseProp.SetMethod == baseAccessor) {
+								basePropDef = baseProp;
+								break;
+							}
+						}
+					} else
+						return false;
+				}
+				CustomAttribute attr;
+				var defaultMemberName = basePropDef.DeclaringType.GetDefaultMemberName(out attr);
+				if (defaultMemberName == basePropDef.Name) {
+					defaultMemberAttribute = attr;
+					return true;
+				}
+			}
+			return false;
+		}
+
+		public static bool IsDelegate(this TypeDefinition type)
+		{
+			if (type.BaseType != null && type.BaseType.Namespace == "System") {
+				if (type.BaseType.Name == "MulticastDelegate")
+					return true;
+				if (type.BaseType.Name == "Delegate" && type.Name != "MulticastDelegate")
+					return true;
+			}
+			return false;
 		}
 	}
 }

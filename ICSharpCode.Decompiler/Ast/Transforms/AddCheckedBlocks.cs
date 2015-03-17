@@ -1,5 +1,20 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
+﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
 using System.Linq;
@@ -30,8 +45,20 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				1. Use minimum number of checked blocks+expressions
 				2. Prefer checked expressions over checked blocks
 				3. Make the scope of checked expressions as small as possible
-				4. Make the scope of checked blocks as large as possible
+				4. Open checked blocks as late as possible, and close checked blocks as late as possible
 				(where goal 1 has the highest priority)
+				
+				Goal 4a (open checked blocks as late as possible) is necessary so that we don't move variable declarations
+				into checked blocks, as the variable might still be used after the checked block.
+				 (this could cause DeclareVariables to omit the variable declaration, producing incorrect code)
+				Goal 4b (close checked blocks as late as possible) makes the code look nicer in this case:
+				   checked {
+				   	int c = a + b;
+						int r = a + c;
+				   	return r;
+				   }
+				If the checked block was closed as early as possible, the variable r would have to be declared outside
+				 (this would work, but look badly)
 		 */
 		
 		#region struct Cost
@@ -180,8 +207,8 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				BlockStatement newBlock = new BlockStatement();
 				// Move all statements except for the first
 				Statement next;
-				for (Statement stmt = firstStatement.NextStatement; stmt != lastStatement; stmt = next) {
-					next = stmt.NextStatement;
+				for (Statement stmt = firstStatement.GetNextStatement(); stmt != lastStatement; stmt = next) {
+					next = stmt.GetNextStatement();
 					newBlock.Add(stmt.Detach());
 				}
 				// Replace the first statement with the new (un)checked block
@@ -242,7 +269,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 			
 			Statement statement = block.Statements.FirstOrDefault();
 			while (true) {
-				// Blocks can be closed 'for free'. We use '<=' so that blocks are closed as late as possible (goal 4)
+				// Blocks can be closed 'for free'. We use '<=' so that blocks are closed as late as possible (goal 4b)
 				if (costCheckedContextUncheckedBlockOpen <= costCheckedContext) {
 					costCheckedContext = costCheckedContextUncheckedBlockOpen;
 					nodesCheckedContext = nodesCheckedContextUncheckedBlockOpen + new InsertedBlock(uncheckedBlockStart, statement, false);
@@ -253,13 +280,13 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				}
 				if (statement == null)
 					break;
-				// Now try opening blocks. We use '<' so that blocks are opened as early as possible. (goal 4)
-				if (costCheckedContext + new Cost(1, 0) < costCheckedContextUncheckedBlockOpen) {
+				// Now try opening blocks. We use '<=' so that blocks are opened as late as possible. (goal 4a)
+				if (costCheckedContext + new Cost(1, 0) <= costCheckedContextUncheckedBlockOpen) {
 					costCheckedContextUncheckedBlockOpen = costCheckedContext + new Cost(1, 0);
 					nodesCheckedContextUncheckedBlockOpen = nodesCheckedContext;
 					uncheckedBlockStart = statement;
 				}
-				if (costUncheckedContext + new Cost(1, 0) < costUncheckedContextCheckedBlockOpen) {
+				if (costUncheckedContext + new Cost(1, 0) <= costUncheckedContextCheckedBlockOpen) {
 					costUncheckedContextCheckedBlockOpen = costUncheckedContext + new Cost(1, 0);
 					nodesUncheckedContextCheckedBlockOpen = nodesUncheckedContext;
 					checkedBlockStart = statement;
@@ -276,7 +303,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 				costUncheckedContextCheckedBlockOpen += stmtResult.CostInCheckedContext;
 				nodesUncheckedContextCheckedBlockOpen += stmtResult.NodesToInsertInCheckedContext;
 				
-				statement = statement.NextStatement;
+				statement = statement.GetNextStatement();
 			}
 			
 			return new Result {
@@ -324,7 +351,7 @@ namespace ICSharpCode.Decompiler.Ast.Transforms
 							result.NodesToInsertInCheckedContext = result.NodesToInsertInUncheckedContext + new ConvertCompoundAssignment(expr, false);
 						}
 					}
-				} else {
+				} else if (expr.Role.IsValid(Expression.Null)) {
 					// We use '<' so that expressions are introduced on the deepest level possible (goal 3)
 					if (result.CostInCheckedContext + new Cost(0, 1) < result.CostInUncheckedContext) {
 						result.CostInUncheckedContext = result.CostInCheckedContext + new Cost(0, 1);

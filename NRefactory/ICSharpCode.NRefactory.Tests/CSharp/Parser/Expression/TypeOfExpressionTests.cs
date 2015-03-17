@@ -1,5 +1,20 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under MIT X11 license (for details please see \doc\license.txt)
+﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
 using NUnit.Framework;
@@ -24,7 +39,7 @@ namespace ICSharpCode.NRefactory.CSharp.Parser.Expression
 					}});
 		}
 		
-		[Test, Ignore("Aliases not yet implemented")]
+		[Test]
 		public void GlobalTypeOfExpressionTest()
 		{
 			ParseUtilCSharp.AssertExpression(
@@ -108,11 +123,32 @@ namespace ICSharpCode.NRefactory.CSharp.Parser.Expression
 					}});
 		}
 		
-		[Test, Ignore("How do we represent unbound types in the AST?")]
+		[Test]
 		public void UnboundTypeOfExpressionTest()
 		{
-			TypeOfExpression toe = ParseUtilCSharp.ParseExpression<TypeOfExpression>("typeof(MyType<,>)");
-			throw new NotImplementedException("How do we represent unbound types in the AST?");
+			var type = new SimpleType("MyType");
+			type.AddChild (new SimpleType (), Roles.TypeArgument);
+			type.AddChild (new SimpleType (), Roles.TypeArgument);
+			ParseUtilCSharp.AssertExpression(
+				"typeof(MyType<,>)",
+				new TypeOfExpression {
+					Type = type
+				});
+		}
+		
+		[Test]
+		public void NestedArraysTest()
+		{
+			ParseUtilCSharp.AssertExpression(
+				"typeof(int[,][])",
+				new TypeOfExpression {
+					Type = new ComposedType {
+						BaseType = new PrimitiveType("int"),
+						ArraySpecifiers = {
+							new ArraySpecifier(2),
+							new ArraySpecifier(1)
+						}
+					}});
 		}
 	}
 }
